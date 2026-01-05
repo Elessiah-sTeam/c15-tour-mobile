@@ -11,12 +11,19 @@ import {
   Platform,
 } from "react-native";
 import Modal from "react-native-modal";
+import { router } from "expo-router";
 
 export default function HomeScreen() {
     const [isModalVisible, setModalVisible] = useState(false);
     const [itineraire, setItineraire] = useState("");
 
-    const toggleModal = () => setModalVisible(!isModalVisible);
+  const toggleModal = () => setModalVisible(!isModalVisible);
+  const handleSubmit = () => {
+    if (itineraire.trim().length > 0) {
+      setModalVisible(false);
+      router.push("/map");
+    }
+  };
 
   return (
     <ImageBackground
@@ -27,7 +34,6 @@ export default function HomeScreen() {
       <View style={styles.logoContainer}>
           <Image
             source={require("../assets/logo.png")}
-            style={styles.logo}
             resizeMode="contain"
           />
       </View>
@@ -58,7 +64,7 @@ export default function HomeScreen() {
               onChangeText={setItineraire}
             />
 
-            <TouchableOpacity style={styles.submitButton} onPress={toggleModal}>
+            <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
               <Text style={styles.submitButtonText}>EN ROUTE !</Text>
             </TouchableOpacity>
           </KeyboardAvoidingView>
