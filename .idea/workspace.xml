@@ -4,9 +4,15 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: ajout d'une fleche pour représenter le user. La fléche tourne selon la rotation de l'utilisateur. Bouton recentrer">
+    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api">
+      <change afterPath="$PROJECT_DIR$/c15-mobile/components/LoadingScreen.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/c15-mobile/components/NavigationStats.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -218,7 +224,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767613466241</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api">
+      <option name="closed" value="true" />
+      <created>1770125572719</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1770125572719</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -240,6 +254,7 @@
     <MESSAGE value="feat #3: page d'accueil avec modal pour rentrer le code de navigation" />
     <MESSAGE value="feat: ajout d'une carte de démo avec la position utilisateur et un trajet" />
     <MESSAGE value="feat: ajout d'une fleche pour représenter le user. La fléche tourne selon la rotation de l'utilisateur. Bouton recentrer" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: ajout d'une fleche pour représenter le user. La fléche tourne selon la rotation de l'utilisateur. Bouton recentrer" />
+    <MESSAGE value="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api" />
   </component>
 </project>
