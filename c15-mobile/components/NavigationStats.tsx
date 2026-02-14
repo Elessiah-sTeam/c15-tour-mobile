@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, ActivityIndicator } from "react-native";
-import { mapStyles } from "../styles/MapStyles";
+import { mapStyles } from "@/styles/MapStyles";
 
 interface NavigationStatsProps {
     speed: number;

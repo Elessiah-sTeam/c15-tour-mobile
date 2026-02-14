@@ -1,10 +1,13 @@
 import { RoutePoint } from '../utils/navigationUtils';
 
+// Configuration de l'API
+const API_BASE_URL = 'http://localhost:8080/tours/share/';
+
 // Récupérer le trajet depuis OSRM
 export const fetchRouteFromOSRM = async (start: RoutePoint, end: RoutePoint): Promise<RoutePoint[] | null> => {
     try {
         // Format OSRM: longitude,latitude (attention, inversé!)
-        const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};-0.5518,47.4711?overview=full&geometries=geojson`;
+        const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};-1.760682,46.480629?overview=full&geometries=geojson`;
 
         console.log("URL OSRM:", url);
         const response = await fetch(url);

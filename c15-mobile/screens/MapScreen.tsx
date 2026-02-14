@@ -15,6 +15,7 @@ import {
     calculateRemainingDistance,
     getNavigationInstruction,
     checkIfOffRoute,
+    isValidGPSPosition,
 } from "@/utils/navigationUtils";
 import { NavigationStats } from "@/components/NavigationStats";
 import { NavigationInstruction } from "@/components/NavigationInstruction";
@@ -34,7 +35,11 @@ export default function MapScreen() {
     const [region, setRegion] = useState<Region | null>(null);
     const [userLocation, setUserLocation] = useState<RoutePoint | null>(null);
     const [heading, setHeading] = useState(0);
+    const [smoothedHeadingState, setSmoothedHeadingState] = useState(0); // État pour le heading lissé
     const [isLoading, setIsLoading] = useState(true);
+    const [isMoving, setIsMoving] = useState(false); // Pour savoir si on est en mouvement
+    const [currentZoom, setCurrentZoom] = useState(17); // Zoom actuel de la caméra
+    const lastUserInteraction = useRef<number>(0); // Timestamp de la dernière interaction utilisateur
 
     // Itinéraire
     const [route, setRoute] = useState<RoutePoint[]>([]);
@@ -130,7 +135,7 @@ export default function MapScreen() {
         initLocation();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // 2️⃣ Suivi GPS en temps réel
+    // 2️⃣ Suivi GPS en temps réel avec filtres améliorés
     useEffect(() => {
         if (route.length === 0) return;
 
@@ -147,12 +152,28 @@ export default function MapScreen() {
                     distanceInterval: 5,
                 },
                 (pos) => {
-                    const { latitude, longitude, speed: currentSpeedMps } = pos.coords;
+                    const { latitude, longitude, speed: currentSpeedMps, accuracy } = pos.coords;
                     const newPosition = { latitude, longitude };
+
+                    // Filtrer uniquement les positions avec une précision TRÈS mauvaise (>100m)
+                    if (accuracy && accuracy > 100) {
+                        console.log(`Position ignorée - précision très faible: ${accuracy}m`);
+                        return;
+                    }
+
+                    // Filtrer uniquement les sauts TRÈS aberrants (>200m au lieu de 100m)
+                    if (previousLocation.current && !isValidGPSPosition(newPosition, previousLocation.current, 200)) {
+                        console.log("Position ignorée - saut GPS très aberrant");
+                        return;
+                    }
+
+                    // ✅ Position valide, on continue avec les calculs
                     setUserLocation(newPosition);
 
                     // Calculer la direction de déplacement
                     if (previousLocation.current && currentSpeedMps && currentSpeedMps > 0.5) {
+                        // En mouvement : utiliser la direction du déplacement
+                        setIsMoving(true);
                         const movementHeading = calculateBearing(
                             previousLocation.current.latitude,
                             previousLocation.current.longitude,
@@ -166,6 +187,10 @@ export default function MapScreen() {
                             SMOOTHING_FACTOR
                         );
                         setHeading(smoothedHeading.current);
+                        setSmoothedHeadingState(smoothedHeading.current); // Mettre à jour le state
+                    } else {
+                        // Arrêté : on utilisera la boussole (géré dans l'autre useEffect)
+                        setIsMoving(false);
                     }
                     previousLocation.current = newPosition;
 
@@ -208,13 +233,19 @@ export default function MapScreen() {
                         averageSpeed: Math.round(avgSpeed),
                     });
 
-                    // Recentrer
-                    if (mapRef.current) {
+                    // Recentrer et orienter la carte
+                    // Ne pas recentrer/orienter si l'utilisateur a interagi récemment (< 5 secondes)
+                    const timeSinceInteraction = Date.now() - lastUserInteraction.current;
+                    if (mapRef.current && timeSinceInteraction > 5000) {
+                        // Mode auto : recentrer et orienter avec zoom fixe
                         mapRef.current.animateCamera({
                             center: { latitude, longitude },
                             zoom: 17,
-                        });
+                            heading: smoothedHeading.current,
+                            pitch: 45,
+                        }, { duration: 300 });
                     }
+                    // Sinon : ne rien faire, l'utilisateur contrôle la carte
                 }
             );
         };
@@ -224,7 +255,7 @@ export default function MapScreen() {
         return () => subscription?.remove();
     }, [route, isOffRoute, isRecalculating]);
 
-    // 3️⃣ Suivi de la direction (boussole - backup)
+    // 3️⃣ Suivi de la direction (boussole - utilisée quand arrêté)
     useEffect(() => {
         let headingSubscription: any = null;
 
@@ -238,12 +269,28 @@ export default function MapScreen() {
                         headingObj.magHeading !== -1 ? headingObj.magHeading : headingObj.trueHeading;
 
                     if (newHeading >= 0 && newHeading <= 360) {
+                        // Appliquer le lissage
                         smoothedHeading.current = smoothHeading(
                             smoothedHeading.current,
                             newHeading,
                             SMOOTHING_FACTOR
                         );
                         setHeading(smoothedHeading.current);
+                        setSmoothedHeadingState(smoothedHeading.current); // Mettre à jour le state
+
+                        // Mettre à jour la carte même quand arrêté (si pas d'interaction récente)
+                        if (!isMoving && mapRef.current && userLocation) {
+                            const timeSinceInteraction = Date.now() - lastUserInteraction.current;
+                            if (timeSinceInteraction > 5000) {
+                                mapRef.current.animateCamera({
+                                    center: userLocation,
+                                    zoom: 17,
+                                    heading: smoothedHeading.current,
+                                    pitch: 45,
+                                }, { duration: 300 });
+                            }
+                            // Sinon : ne rien faire
+                        }
                     }
                 });
             } catch (error) {
@@ -254,7 +301,7 @@ export default function MapScreen() {
         startHeading();
 
         return () => headingSubscription?.remove();
-    }, []);
+    }, [isMoving, userLocation]);
 
     // Afficher le loader pendant le chargement initial
     if (isLoading || !region) {
@@ -263,7 +310,20 @@ export default function MapScreen() {
 
     return (
         <View style={mapStyles.container}>
-            <MapView ref={mapRef} style={mapStyles.map} region={region} showsUserLocation={false}>
+            <MapView
+                ref={mapRef}
+                style={mapStyles.map}
+                region={region}
+                showsUserLocation={false}
+                onPanDrag={() => {
+                    // L'utilisateur fait un pan/drag
+                    lastUserInteraction.current = Date.now();
+                }}
+                onTouchStart={() => {
+                    // L'utilisateur touche la carte (zoom pinch)
+                    lastUserInteraction.current = Date.now();
+                }}
+            >
                 <UrlTile urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
 
                 {route.length > 0 && (
@@ -281,7 +341,7 @@ export default function MapScreen() {
                     <Marker
                         coordinate={userLocation}
                         anchor={{ x: 0.5, y: 0.5 }}
-                        rotation={heading}
+                        rotation={smoothedHeadingState}
                         flat
                         image={require("../assets/fleche.png")}
                     />
@@ -305,13 +365,13 @@ export default function MapScreen() {
                     style={mapStyles.recenterButton}
                     onPress={() => {
                         if (!userLocation) return;
+                        lastUserInteraction.current = 0; // Réinitialiser pour permettre le recentrage
                         mapRef.current?.animateCamera({
                             center: userLocation,
-                            pitch: 0,
-                            heading: 0,
-                            altitude: 1000,
+                            pitch: 45,
+                            heading: smoothedHeading.current,
                             zoom: 17,
-                        });
+                        }, { duration: 500 });
                     }}
                 >
                     <Text style={{ color: "white", fontWeight: "bold", fontSize: 20 }}>📍</Text>

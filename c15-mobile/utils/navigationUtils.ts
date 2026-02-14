@@ -8,6 +8,25 @@ export interface NavigationInstruction {
     instruction: string;
 }
 
+// Filtrer les positions GPS aberrantes
+export const isValidGPSPosition = (
+    newPos: RoutePoint,
+    previousPos: RoutePoint | null,
+    maxJumpMeters: number = 100
+): boolean => {
+    if (!previousPos) return true; // Première position toujours valide
+
+    const distance = calculateDistance(
+        previousPos.latitude,
+        previousPos.longitude,
+        newPos.latitude,
+        newPos.longitude
+    );
+
+    // Si le saut est trop grand (en km, donc multiplier par 1000 pour avoir des mètres)
+    return distance * 1000 < maxJumpMeters;
+};
+
 // Calculer la distance entre deux points (formule de Haversine)
 export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     const R = 6371; // Rayon de la Terre en km

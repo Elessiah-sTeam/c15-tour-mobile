@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text } from "react-native";
-import { mapStyles } from "../styles/MapStyles";
-import { NavigationInstruction as NavigationInstructionType } from "../utils/navigationUtils";
+import { mapStyles } from "@/styles/MapStyles";
+import { NavigationInstruction as NavigationInstructionType } from "@/utils/navigationUtils";
 
 interface NavigationInstructionProps {
     instruction: NavigationInstructionType | null;
