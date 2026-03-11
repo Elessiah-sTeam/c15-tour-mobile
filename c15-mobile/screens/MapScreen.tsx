@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
-import { View, Image, TouchableOpacity, Text } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, TouchableOpacity, Text } from "react-native";
 import MapView, { Marker, Polyline, UrlTile, Region } from "react-native-maps";
 import * as Location from "expo-location";
+import { useLocalSearchParams, router } from "expo-router";
 
 // Imports
 import { mapStyles } from "@/styles/MapStyles";
-import { fetchRouteFromOSRM } from "@/services/osrmService";
+import { fetchRouteByCode, fetchRouteFromOSRM } from "@/services/osrmService";
 import {
     RoutePoint,
     NavigationInstruction as NavigationInstructionType,
@@ -16,43 +17,107 @@ import {
     getNavigationInstruction,
     checkIfOffRoute,
     isValidGPSPosition,
+    extractManeuverPoints,
+    findNextInstruction,
 } from "@/utils/navigationUtils";
 import { NavigationStats } from "@/components/NavigationStats";
 import { NavigationInstruction } from "@/components/NavigationInstruction";
 import { LoadingScreen } from "@/components/LoadingScreen";
 
-interface NavigationStats {
+interface NavigationStatsInterface {
     speed: number;
     remainingDistance: number;
     estimatedTime: number;
     averageSpeed: number;
 }
 
+
+interface TurnOverlay {
+    polylineCoords: RoutePoint[];
+    arrowCoordinate: RoutePoint;
+    arrowBearing: number;
+    maneuverRouteIndex: number; // index dans route[] du point de manœuvre
+}
+
+const TURN_MANEUVER_TYPES = ['turn', 'roundabout', 'rotary', 'fork', 'end of road', 'ramp', 'exit roundabout'];
+
+const computeTurnOverlays = (steps: any[], routePoints: RoutePoint[]): TurnOverlay[] => {
+    if (!steps || steps.length < 2 || routePoints.length === 0) return [];
+
+    const overlays: TurnOverlay[] = [];
+
+    for (let i = 0; i < steps.length - 1; i++) {
+        const step = steps[i];
+        const nextStep = steps[i + 1];
+
+        if (!TURN_MANEUVER_TYPES.includes(nextStep.maneuver?.type)) continue;
+
+        const inCoords: RoutePoint[] = (step.geometry?.coordinates || []).map(
+            (c: [number, number]) => ({ latitude: c[1], longitude: c[0] })
+        );
+        const outCoords: RoutePoint[] = (nextStep.geometry?.coordinates || []).map(
+            (c: [number, number]) => ({ latitude: c[1], longitude: c[0] })
+        );
+
+        if (inCoords.length < 2 || outCoords.length < 2) continue;
+
+        const maneuverPoint: RoutePoint = {
+            latitude: nextStep.maneuver.location[1],
+            longitude: nextStep.maneuver.location[0],
+        };
+
+        // Trouver l'index du point de manœuvre dans la route globale
+        let minDist = Infinity;
+        let maneuverRouteIndex = 0;
+        routePoints.forEach((p, idx) => {
+            const d = Math.abs(p.latitude - maneuverPoint.latitude) + Math.abs(p.longitude - maneuverPoint.longitude);
+            if (d < minDist) { minDist = d; maneuverRouteIndex = idx; }
+        });
+
+        const inSlice = inCoords.slice(Math.max(0, inCoords.length - 3));
+        const outSlice = outCoords.slice(0, Math.min(outCoords.length, 3));
+        const polylineCoords = [...inSlice, maneuverPoint, ...outSlice];
+
+        const arrowCoordinate = outCoords[Math.min(outCoords.length - 1, 2)];
+        const arrowBearing = (Math.atan2(
+            arrowCoordinate.longitude - maneuverPoint.longitude,
+            arrowCoordinate.latitude - maneuverPoint.latitude
+        ) * 180 / Math.PI + 360) % 360;
+
+        overlays.push({ polylineCoords, arrowCoordinate, arrowBearing, maneuverRouteIndex });
+    }
+
+    return overlays;
+};
+
 export default function MapScreen() {
     const mapRef = useRef<MapView | null>(null);
+
+    // Récupérer le code d'itinéraire
+    const { routeCode } = useLocalSearchParams<{ routeCode: string }>();
+
+    console.log("Code reçu:", routeCode);
 
     // États de base
     const [region, setRegion] = useState<Region | null>(null);
     const [userLocation, setUserLocation] = useState<RoutePoint | null>(null);
     const [heading, setHeading] = useState(0);
-    const [smoothedHeadingState, setSmoothedHeadingState] = useState(0); // État pour le heading lissé
+    const [smoothedHeadingState, setSmoothedHeadingState] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
-    const [isMoving, setIsMoving] = useState(false); // Pour savoir si on est en mouvement
-    const [currentZoom, setCurrentZoom] = useState(17); // Zoom actuel de la caméra
-    const lastUserInteraction = useRef<number>(0); // Timestamp de la dernière interaction utilisateur
+    const [isMoving, setIsMoving] = useState(false);
+    const lastUserInteraction = useRef<number>(0);
 
     // Itinéraire
     const [route, setRoute] = useState<RoutePoint[]>([]);
-    const [destination, setDestination] = useState<RoutePoint>({
-        latitude: 47.241208,
-        longitude: -1.509439,
-    });
+    const [destination, setDestination] = useState<RoutePoint | null>(null);
+    const [navigationSteps, setNavigationSteps] = useState<any[]>([]);
+    const [maneuverPoints, setManeuverPoints] = useState<any[]>([]);
 
     // États de navigation
     const [currentRouteIndex, setCurrentRouteIndex] = useState(0);
     const [isOffRoute, setIsOffRoute] = useState(false);
     const [isRecalculating, setIsRecalculating] = useState(false);
-    const [navigationStats, setNavigationStats] = useState<NavigationStats>({
+    const [navigationStats, setNavigationStats] = useState<NavigationStatsInterface>({
         speed: 0,
         remainingDistance: 0,
         estimatedTime: 0,
@@ -67,11 +132,60 @@ export default function MapScreen() {
     const smoothedHeading = useRef<number>(0);
     const SMOOTHING_FACTOR = 0.15;
 
-    // Récupérer le trajet depuis OSRM
-    const fetchRoute = async (start: RoutePoint, end: RoutePoint): Promise<boolean> => {
+    // Overlays de virage — recalculés quand les steps ou la route changent
+    const turnOverlays = useMemo(() => computeTurnOverlays(navigationSteps, route), [navigationSteps, route]);
+
+    // Prochain virage devant l'utilisateur
+    const nextTurnOverlay = useMemo(() => {
+        return turnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
+    }, [turnOverlays, currentRouteIndex]);
+
+    // Récupérer le trajet depuis ton API
+    const fetchRouteByRouteCode = async (code: string): Promise<boolean> => {
+        const result = await fetchRouteByCode(code);
+
+        if (result.coordinates && result.coordinates.length > 0) {
+            setRoute(result.coordinates);
+            setDestination(result.coordinates[result.coordinates.length - 1]);
+
+            if (result.steps && result.steps.length > 0) {
+                setNavigationSteps(result.steps);
+                const maneuvers = extractManeuverPoints(result.steps);
+                setManeuverPoints(maneuvers);
+                console.log("Points de manœuvre:", maneuvers);
+            }
+
+            return true;
+        }
+
+        // Gérer les erreurs et rediriger
+        let errorMessage = "";
+        if (result.error === 'not_found') {
+            errorMessage = "Code d'itinéraire invalide. Veuillez vérifier le code et réessayer.";
+        } else if (result.error === 'network') {
+            errorMessage = "Erreur de connexion. Vérifiez votre connexion internet.";
+        } else {
+            errorMessage = "Erreur lors du chargement de l'itinéraire.";
+        }
+
+        alert(errorMessage);
+        // Rediriger vers la page d'accueil après avoir fermé l'alerte
+        setTimeout(() => {
+            router.back();
+        }, 100);
+
+        return false;
+    };
+
+    // Récupérer le trajet depuis OSRM (pour recalcul)
+    const fetchRouteFromOSRMForRecalc = async (start: RoutePoint, end: RoutePoint): Promise<boolean> => {
         const coordinates = await fetchRouteFromOSRM(start, end);
         if (coordinates) {
             setRoute(coordinates);
+            // Réinitialiser les instructions et marqueurs car c'est un nouveau trajet
+            setNavigationSteps([]);
+            setManeuverPoints([]);
+            setNextInstruction(null);
             return true;
         }
         return false;
@@ -79,10 +193,9 @@ export default function MapScreen() {
 
     // Recalculer le trajet
     const recalculateRoute = async (currentPos: RoutePoint) => {
-        if (isRecalculating) return;
-
+        if (isRecalculating || !destination) return;
         setIsRecalculating(true);
-        const success = await fetchRoute(currentPos, destination);
+        const success = await fetchRouteFromOSRMForRecalc(currentPos, destination);
         setIsRecalculating(false);
         if (success) {
             setIsOffRoute(false);
@@ -95,47 +208,77 @@ export default function MapScreen() {
         if (speedHistory.current.length > MAX_SPEED_HISTORY) {
             speedHistory.current.shift();
         }
-
         const sum = speedHistory.current.reduce((acc, speed) => acc + speed, 0);
         return speedHistory.current.length > 0 ? sum / speedHistory.current.length : 0;
     };
 
-    // 1️⃣ Initialisation
+    // Initialisation
     useEffect(() => {
         const initLocation = async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== "granted") {
-                console.log("Permission GPS refusée");
+            if (!routeCode) {
+                console.error("Aucun code d'itinéraire fourni");
+                alert("Aucun code d'itinéraire fourni");
                 setIsLoading(false);
                 return;
             }
 
-            const loc = await Location.getCurrentPositionAsync({});
-            const { latitude, longitude } = loc.coords;
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== "granted") {
+                    console.log("Permission GPS refusée");
+                    setIsLoading(false);
+                    return;
+                }
 
-            setRegion({
-                latitude,
-                longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-            });
+                const hasLocation = await Location.hasServicesEnabledAsync();
+                if (!hasLocation) {
+                    console.error("Services de localisation désactivés");
+                    setIsLoading(false);
+                    return;
+                }
 
-            setUserLocation({ latitude, longitude });
+                let latitude, longitude;
 
-            // Récupérer le trajet
-            const success = await fetchRoute({ latitude, longitude }, destination);
+                try {
+                    const loc = await Location.getCurrentPositionAsync({
+                        accuracy: Location.Accuracy.Balanced
+                    });
+                    latitude = loc.coords.latitude;
+                    longitude = loc.coords.longitude;
+                    console.log("Position GPS réelle récupérée:", latitude, longitude);
+                } catch (gpsError) {
+                    console.warn("GPS non disponible, utilisation position par défaut:", gpsError);
+                    latitude = 46.480716;
+                    longitude = -1.761113;
+                }
 
-            if (!success) {
-                console.error("Impossible de calculer le trajet");
+                setRegion({
+                    latitude,
+                    longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                });
+
+                setUserLocation({ latitude, longitude });
+
+                console.log("Chargement du trajet avec le code:", routeCode);
+                const success = await fetchRouteByRouteCode(routeCode);
+
+                if (!success) {
+                    console.error("Impossible de charger l'itinéraire avec le code:", routeCode);
+                }
+
+                setIsLoading(false);
+            } catch (error) {
+                console.error("Erreur lors de l'initialisation:", error);
+                setIsLoading(false);
             }
-
-            setIsLoading(false);
         };
 
         initLocation();
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [routeCode]);
 
-    // 2️⃣ Suivi GPS en temps réel avec filtres améliorés
+    // Suivi GPS
     useEffect(() => {
         if (route.length === 0) return;
 
@@ -149,30 +292,25 @@ export default function MapScreen() {
                 {
                     accuracy: Location.Accuracy.BestForNavigation,
                     timeInterval: 1000,
-                    distanceInterval: 5,
+                    distanceInterval: 0,
                 },
                 (pos) => {
                     const { latitude, longitude, speed: currentSpeedMps, accuracy } = pos.coords;
                     const newPosition = { latitude, longitude };
 
-                    // Filtrer uniquement les positions avec une précision TRÈS mauvaise (>100m)
                     if (accuracy && accuracy > 100) {
                         console.log(`Position ignorée - précision très faible: ${accuracy}m`);
                         return;
                     }
 
-                    // Filtrer uniquement les sauts TRÈS aberrants (>200m au lieu de 100m)
                     if (previousLocation.current && !isValidGPSPosition(newPosition, previousLocation.current, 200)) {
                         console.log("Position ignorée - saut GPS très aberrant");
                         return;
                     }
 
-                    // ✅ Position valide, on continue avec les calculs
                     setUserLocation(newPosition);
 
-                    // Calculer la direction de déplacement
                     if (previousLocation.current && currentSpeedMps && currentSpeedMps > 0.5) {
-                        // En mouvement : utiliser la direction du déplacement
                         setIsMoving(true);
                         const movementHeading = calculateBearing(
                             previousLocation.current.latitude,
@@ -187,31 +325,21 @@ export default function MapScreen() {
                             SMOOTHING_FACTOR
                         );
                         setHeading(smoothedHeading.current);
-                        setSmoothedHeadingState(smoothedHeading.current); // Mettre à jour le state
+                        setSmoothedHeadingState(smoothedHeading.current);
                     } else {
-                        // Arrêté : on utilisera la boussole (géré dans l'autre useEffect)
                         setIsMoving(false);
                     }
                     previousLocation.current = newPosition;
 
-                    // Vitesse
                     const speedKmh = currentSpeedMps ? currentSpeedMps * 3.6 : 0;
-
-                    // Point le plus proche
                     const closestIndex = findClosestRoutePoint(newPosition, route);
                     setCurrentRouteIndex(closestIndex);
 
-                    // Distance restante
                     const distanceLeft = calculateRemainingDistance(newPosition, route, closestIndex);
-
-                    // Vitesse moyenne
                     const avgSpeed = updateAverageSpeed(speedKmh);
-
-                    // Temps estimé
                     const effectiveSpeed = avgSpeed > 5 ? avgSpeed : 30;
                     const timeLeft = (distanceLeft / effectiveSpeed) * 60;
 
-                    // Vérifier si hors trajet
                     const offRoute = checkIfOffRoute(newPosition, route);
                     if (offRoute && !isOffRoute && !isRecalculating) {
                         setIsOffRoute(true);
@@ -220,12 +348,15 @@ export default function MapScreen() {
                         setIsOffRoute(false);
                     }
 
-                    // Instruction suivante
-                    const nextIndex = closestIndex < route.length - 1 ? closestIndex + 1 : closestIndex;
-                    const instruction = getNavigationInstruction(newPosition, closestIndex, nextIndex, route);
+                    let instruction: NavigationInstructionType | null = null;
+                    if (navigationSteps.length > 0) {
+                        instruction = findNextInstruction(newPosition, navigationSteps, route);
+                    } else {
+                        const nextIndex = closestIndex < route.length - 1 ? closestIndex + 1 : closestIndex;
+                        instruction = getNavigationInstruction(newPosition, closestIndex, nextIndex, route);
+                    }
                     setNextInstruction(instruction);
 
-                    // Stats
                     setNavigationStats({
                         speed: Math.round(speedKmh),
                         remainingDistance: distanceLeft,
@@ -233,11 +364,8 @@ export default function MapScreen() {
                         averageSpeed: Math.round(avgSpeed),
                     });
 
-                    // Recentrer et orienter la carte
-                    // Ne pas recentrer/orienter si l'utilisateur a interagi récemment (< 5 secondes)
                     const timeSinceInteraction = Date.now() - lastUserInteraction.current;
                     if (mapRef.current && timeSinceInteraction > 5000) {
-                        // Mode auto : recentrer et orienter avec zoom fixe
                         mapRef.current.animateCamera({
                             center: { latitude, longitude },
                             zoom: 17,
@@ -245,17 +373,15 @@ export default function MapScreen() {
                             pitch: 45,
                         }, { duration: 300 });
                     }
-                    // Sinon : ne rien faire, l'utilisateur contrôle la carte
                 }
             );
         };
 
         startWatching();
-
         return () => subscription?.remove();
-    }, [route, isOffRoute, isRecalculating]);
+    }, [route, isOffRoute, isRecalculating, navigationSteps]);
 
-    // 3️⃣ Suivi de la direction (boussole - utilisée quand arrêté)
+    // Suivi boussole
     useEffect(() => {
         let headingSubscription: any = null;
 
@@ -265,20 +391,17 @@ export default function MapScreen() {
 
             try {
                 headingSubscription = await Location.watchHeadingAsync((headingObj) => {
-                    const newHeading =
-                        headingObj.magHeading !== -1 ? headingObj.magHeading : headingObj.trueHeading;
+                    const newHeading = headingObj.magHeading !== -1 ? headingObj.magHeading : headingObj.trueHeading;
 
                     if (newHeading >= 0 && newHeading <= 360) {
-                        // Appliquer le lissage
                         smoothedHeading.current = smoothHeading(
                             smoothedHeading.current,
                             newHeading,
                             SMOOTHING_FACTOR
                         );
                         setHeading(smoothedHeading.current);
-                        setSmoothedHeadingState(smoothedHeading.current); // Mettre à jour le state
+                        setSmoothedHeadingState(smoothedHeading.current);
 
-                        // Mettre à jour la carte même quand arrêté (si pas d'interaction récente)
                         if (!isMoving && mapRef.current && userLocation) {
                             const timeSinceInteraction = Date.now() - lastUserInteraction.current;
                             if (timeSinceInteraction > 5000) {
@@ -289,7 +412,6 @@ export default function MapScreen() {
                                     pitch: 45,
                                 }, { duration: 300 });
                             }
-                            // Sinon : ne rien faire
                         }
                     }
                 });
@@ -299,11 +421,9 @@ export default function MapScreen() {
         };
 
         startHeading();
-
         return () => headingSubscription?.remove();
     }, [isMoving, userLocation]);
 
-    // Afficher le loader pendant le chargement initial
     if (isLoading || !region) {
         return <LoadingScreen message="Chargement de la carte..." />;
     }
@@ -315,14 +435,8 @@ export default function MapScreen() {
                 style={mapStyles.map}
                 region={region}
                 showsUserLocation={false}
-                onPanDrag={() => {
-                    // L'utilisateur fait un pan/drag
-                    lastUserInteraction.current = Date.now();
-                }}
-                onTouchStart={() => {
-                    // L'utilisateur touche la carte (zoom pinch)
-                    lastUserInteraction.current = Date.now();
-                }}
+                onPanDrag={() => lastUserInteraction.current = Date.now()}
+                onTouchStart={() => lastUserInteraction.current = Date.now()}
             >
                 <UrlTile urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
 
@@ -333,7 +447,34 @@ export default function MapScreen() {
                             strokeColor={isOffRoute ? "orange" : "#BB487C"}
                             strokeWidth={10}
                         />
-                        <Marker coordinate={route[route.length - 1]} title="Arrivée" pinColor="red" />
+
+                        {/* Prochain virage uniquement */}
+                        {nextTurnOverlay && (
+                            <React.Fragment>
+                                <Polyline
+                                    coordinates={nextTurnOverlay.polylineCoords}
+                                    strokeColor="#FFFFFF"
+                                    strokeWidth={9}
+                                    zIndex={15}
+                                />
+                                <Marker
+                                    coordinate={nextTurnOverlay.arrowCoordinate}
+                                    anchor={{ x: 0.5, y: 0.5 }}
+                                    rotation={nextTurnOverlay.arrowBearing}
+                                    flat={true}
+                                    zIndex={20}
+                                    tracksViewChanges={false}
+                                    image={require("../assets/arrow_route.png")}
+                                />
+                            </React.Fragment>
+                        )}
+
+                        <Marker
+                            coordinate={route[route.length - 1]}
+                            title="Arrivée"
+                            pinColor="red"
+                            zIndex={50}
+                        />
                     </>
                 )}
 
@@ -343,15 +484,14 @@ export default function MapScreen() {
                         anchor={{ x: 0.5, y: 0.5 }}
                         rotation={smoothedHeadingState}
                         flat
+                        zIndex={1000}
                         image={require("../assets/fleche.png")}
                     />
                 )}
             </MapView>
 
-            {/* Instructions de navigation */}
             <NavigationInstruction instruction={nextInstruction} />
 
-            {/* Statistiques de navigation */}
             <NavigationStats
                 speed={navigationStats.speed}
                 remainingDistance={navigationStats.remainingDistance}
@@ -359,13 +499,12 @@ export default function MapScreen() {
                 isRecalculating={isRecalculating}
             />
 
-            {/* Bouton recentrer */}
             {userLocation && (
                 <TouchableOpacity
                     style={mapStyles.recenterButton}
                     onPress={() => {
                         if (!userLocation) return;
-                        lastUserInteraction.current = 0; // Réinitialiser pour permettre le recentrage
+                        lastUserInteraction.current = 0;
                         mapRef.current?.animateCamera({
                             center: userLocation,
                             pitch: 45,
@@ -378,7 +517,6 @@ export default function MapScreen() {
                 </TouchableOpacity>
             )}
 
-            {/* Alerte hors trajet - Affiche automatiquement le statut */}
             {isOffRoute && (
                 <View style={mapStyles.offRouteAlert}>
                     <Text style={mapStyles.offRouteText}>
