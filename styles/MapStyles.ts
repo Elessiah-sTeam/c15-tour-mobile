@@ -21,16 +21,20 @@ export const mapStyles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 3.84,
+        alignItems: "center", // Centrer le contenu
     },
     instructionText: {
         fontSize: 18,
         fontWeight: "600",
         color: "#333",
+        textAlign: "center", // Centrer le texte
+        marginBottom: 5, // Espacement entre texte et distance
     },
     instructionDistance: {
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: "bold",
         color: "#BB487C",
+        textAlign: "center", // Centrer la distance
     },
     // Panneau de statistiques
     statsPanel: {

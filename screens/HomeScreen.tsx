@@ -9,6 +9,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import Modal from "react-native-modal";
 import { router } from "expo-router";
@@ -19,11 +20,25 @@ export default function HomeScreen() {
 
   const toggleModal = () => setModalVisible(!isModalVisible);
   const handleSubmit = () => {
-    if (itineraire.trim().length > 0) {
-      setModalVisible(false);
-      router.push("/map");
+    const code = itineraire.trim();
+
+    if (code.length === 0) {
+      Alert.alert("Code requis", "Veuillez entrer un code d'itinéraire");
+      return;
     }
+
+    setModalVisible(false);
+
+    // Passer le code à MapScreen via les paramètres de navigation
+    router.push({
+      pathname: "/map",
+      params: { routeCode: code }
+    });
+
+    // Réinitialiser le champ
+    setItineraire("");
   };
+
 
   return (
     <ImageBackground

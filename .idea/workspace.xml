@@ -4,16 +4,35 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api">
-      <change afterPath="$PROJECT_DIR$/c15-mobile/components/LoadingScreen.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/c15-mobile/components/NavigationStats.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" afterDir="false" />
+    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte">
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/.vscode/extensions.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/.vscode/settings.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app/_layout.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app/index.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app/map.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/arrow_route.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/background.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/logo.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/logo_accueil.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/components/LoadingScreen.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationStats.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/eslint.config.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/navigation/types.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/package-lock.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/package.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/HomeScreen.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/tsconfig.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -29,7 +48,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="dev" />
+        <entry key="$PROJECT_DIR$" value="feature/page-accueil" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -67,9 +86,9 @@
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
     &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
     &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feature/page-accueil&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature/api-request+smooth-rotation&quot;,
     &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/matso/Documents/Travail/SDV/projetC15/c15-tour-backend&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/matso/Documents/Travail/SDV/projetC15/c15-tour-mobile/c15-mobile&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -183,6 +202,14 @@
       <workItem from="1770026657580" duration="645000" />
       <workItem from="1770106658343" duration="10534000" />
       <workItem from="1770123353590" duration="621000" />
+      <workItem from="1770193059948" duration="60000" />
+      <workItem from="1770196064857" duration="125000" />
+      <workItem from="1771078661053" duration="278000" />
+      <workItem from="1771079394894" duration="4448000" />
+      <workItem from="1771755340473" duration="8159000" />
+      <workItem from="1771961009524" duration="3334000" />
+      <workItem from="1771964451320" duration="13000" />
+      <workItem from="1772039606760" duration="69000" />
     </task>
     <task id="LOCAL-00001" summary="init #1: react native and expo">
       <option name="closed" value="true" />
@@ -232,7 +259,23 @@
       <option name="project" value="LOCAL" />
       <updated>1770125572719</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="feat: amelioration de l'achitecture du code + ajout de loading au premier chargement ainsi que lors d'une erreur de trajet">
+      <option name="closed" value="true" />
+      <created>1770130939019</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1770130939019</updated>
+    </task>
+    <task id="LOCAL-00008" summary="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte">
+      <option name="closed" value="true" />
+      <created>1771083832254</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1771083832254</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -255,6 +298,8 @@
     <MESSAGE value="feat: ajout d'une carte de démo avec la position utilisateur et un trajet" />
     <MESSAGE value="feat: ajout d'une fleche pour représenter le user. La fléche tourne selon la rotation de l'utilisateur. Bouton recentrer" />
     <MESSAGE value="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api" />
+    <MESSAGE value="feat: amelioration de l'achitecture du code + ajout de loading au premier chargement ainsi que lors d'une erreur de trajet" />
+    <MESSAGE value="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte" />
   </component>
 </project>

@@ -14,11 +14,11 @@ export const NavigationInstruction: React.FC<NavigationInstructionProps> = ({ in
         <View style={mapStyles.instructionPanel}>
             <Text style={mapStyles.instructionText}>
                 {instruction.instruction}
-                <Text style={mapStyles.instructionDistance}>
-                    {instruction.distance < 1
-                        ? `${Math.round(instruction.distance * 1000)} m`
-                        : `${instruction.distance.toFixed(1)} km`}
-                </Text>
+            </Text>
+            <Text style={mapStyles.instructionDistance}>
+                {instruction.distance < 1
+                    ? ` ${Math.round(instruction.distance * 1000)}m`
+                    : ` ${instruction.distance.toFixed(1)}km`}
             </Text>
         </View>
     );
