@@ -7,13 +7,32 @@
     <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte">
       <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" beforeDir="false" afterPath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/.vscode/extensions.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/.vscode/settings.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app/_layout.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app/index.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/app/map.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/arrow_route.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/background.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/logo.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/logo_accueil.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/components/LoadingScreen.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationStats.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/eslint.config.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/navigation/types.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/package-lock.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/package.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/HomeScreen.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/tsconfig.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
