@@ -6,11 +6,12 @@ import { useLocalSearchParams, router } from "expo-router";
 
 // Imports
 import { mapStyles } from "@/styles/MapStyles";
-import { fetchRouteByCode, fetchRouteFromOSRM } from "@/services/osrmService";
+import { fetchRouteFromOSRM } from "@/services/osrmService";
 import {
     RoutePoint,
     NavigationInstruction as NavigationInstructionType,
     calculateBearing,
+    calculateDistance,
     smoothHeading,
     findClosestRoutePoint,
     calculateRemainingDistance,
@@ -31,12 +32,11 @@ interface NavigationStatsInterface {
     averageSpeed: number;
 }
 
-
 interface TurnOverlay {
     polylineCoords: RoutePoint[];
     arrowCoordinate: RoutePoint;
     arrowBearing: number;
-    maneuverRouteIndex: number; // index dans route[] du point de manœuvre
+    maneuverRouteIndex: number;
 }
 
 const TURN_MANEUVER_TYPES = ['turn', 'roundabout', 'rotary', 'fork', 'end of road', 'ramp', 'exit roundabout'];
@@ -66,7 +66,6 @@ const computeTurnOverlays = (steps: any[], routePoints: RoutePoint[]): TurnOverl
             longitude: nextStep.maneuver.location[0],
         };
 
-        // Trouver l'index du point de manœuvre dans la route globale
         let minDist = Infinity;
         let maneuverRouteIndex = 0;
         routePoints.forEach((p, idx) => {
@@ -90,13 +89,63 @@ const computeTurnOverlays = (steps: any[], routePoints: RoutePoint[]): TurnOverl
     return overlays;
 };
 
+
+// Flèches simples espacées régulièrement pour le trajet vers le départ
+const ARROW_SPACING_METERS = 40;
+
+interface SimpleArrow {
+    coordinate: RoutePoint;
+    bearing: number;
+}
+
+const computeSimpleArrows = (points: RoutePoint[]): SimpleArrow[] => {
+    if (points.length < 2) return [];
+    const arrows: SimpleArrow[] = [];
+    let accumulated = 0;
+    let nextAt = ARROW_SPACING_METERS;
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const segMeters = calculateDistance(p1.latitude, p1.longitude, p2.latitude, p2.longitude) * 1000;
+        const bearing = calculateBearing(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
+
+        while (accumulated + segMeters >= nextAt) {
+            const fraction = (nextAt - accumulated) / segMeters;
+            arrows.push({
+                coordinate: {
+                    latitude: p1.latitude + fraction * (p2.latitude - p1.latitude),
+                    longitude: p1.longitude + fraction * (p2.longitude - p1.longitude),
+                },
+                bearing,
+            });
+            nextAt += ARROW_SPACING_METERS;
+        }
+        accumulated += segMeters;
+    }
+    return arrows;
+};
+
 export default function MapScreen() {
     const mapRef = useRef<MapView | null>(null);
 
-    // Récupérer le code d'itinéraire
-    const { routeCode } = useLocalSearchParams<{ routeCode: string }>();
+    // Récupérer les paramètres transmis par RoutePreviewScreen
+    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart } =
+        useLocalSearchParams<{
+            coordinates: string;
+            steps: string;
+            totalDistance: string;
+            totalDuration: string;
+            routeStartIndex: string;
+            routeToStart: string;
+        }>();
 
-    console.log("Code reçu:", routeCode);
+    const parsedRouteStartIndex = routeStartIndex ? parseInt(routeStartIndex) : 0;
+    const parsedRouteToStart: RoutePoint[] = useMemo(() => {
+        try { return routeToStart ? JSON.parse(routeToStart) : []; }
+        catch { return []; }
+    }, [routeToStart]);
+    const routeToStartArrows = useMemo(() => computeSimpleArrows(parsedRouteToStart), [parsedRouteToStart]);
 
     // États de base
     const [region, setRegion] = useState<Region | null>(null);
@@ -124,6 +173,7 @@ export default function MapScreen() {
         averageSpeed: 0,
     });
     const [nextInstruction, setNextInstruction] = useState<NavigationInstructionType | null>(null);
+    const [hasReachedStart, setHasReachedStart] = useState(false);
 
     // Historique et filtres
     const speedHistory = useRef<number[]>([]);
@@ -132,7 +182,7 @@ export default function MapScreen() {
     const smoothedHeading = useRef<number>(0);
     const SMOOTHING_FACTOR = 0.15;
 
-    // Overlays de virage — recalculés quand les steps ou la route changent
+    // Overlays de virage
     const turnOverlays = useMemo(() => computeTurnOverlays(navigationSteps, route), [navigationSteps, route]);
 
     // Prochain virage devant l'utilisateur
@@ -140,49 +190,11 @@ export default function MapScreen() {
         return turnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
     }, [turnOverlays, currentRouteIndex]);
 
-    // Récupérer le trajet depuis ton API
-    const fetchRouteByRouteCode = async (code: string): Promise<boolean> => {
-        const result = await fetchRouteByCode(code);
-
-        if (result.coordinates && result.coordinates.length > 0) {
-            setRoute(result.coordinates);
-            setDestination(result.coordinates[result.coordinates.length - 1]);
-
-            if (result.steps && result.steps.length > 0) {
-                setNavigationSteps(result.steps);
-                const maneuvers = extractManeuverPoints(result.steps);
-                setManeuverPoints(maneuvers);
-                console.log("Points de manœuvre:", maneuvers);
-            }
-
-            return true;
-        }
-
-        // Gérer les erreurs et rediriger
-        let errorMessage = "";
-        if (result.error === 'not_found') {
-            errorMessage = "Code d'itinéraire invalide. Veuillez vérifier le code et réessayer.";
-        } else if (result.error === 'network') {
-            errorMessage = "Erreur de connexion. Vérifiez votre connexion internet.";
-        } else {
-            errorMessage = "Erreur lors du chargement de l'itinéraire.";
-        }
-
-        alert(errorMessage);
-        // Rediriger vers la page d'accueil après avoir fermé l'alerte
-        setTimeout(() => {
-            router.back();
-        }, 100);
-
-        return false;
-    };
-
     // Récupérer le trajet depuis OSRM (pour recalcul)
     const fetchRouteFromOSRMForRecalc = async (start: RoutePoint, end: RoutePoint): Promise<boolean> => {
-        const coordinates = await fetchRouteFromOSRM(start, end);
-        if (coordinates) {
-            setRoute(coordinates);
-            // Réinitialiser les instructions et marqueurs car c'est un nouveau trajet
+        const coords = await fetchRouteFromOSRM(start, end);
+        if (coords) {
+            setRoute(coords);
             setNavigationSteps([]);
             setManeuverPoints([]);
             setNextInstruction(null);
@@ -215,14 +227,36 @@ export default function MapScreen() {
     // Initialisation
     useEffect(() => {
         const initLocation = async () => {
-            if (!routeCode) {
-                console.error("Aucun code d'itinéraire fourni");
-                alert("Aucun code d'itinéraire fourni");
+            if (!coordinates) {
+                console.error("Aucune coordonnée fournie");
                 setIsLoading(false);
                 return;
             }
 
             try {
+                const parsedRoute: RoutePoint[] = JSON.parse(coordinates);
+                const parsedSteps = steps ? JSON.parse(steps) : [];
+
+                if (parsedRoute.length === 0) {
+                    console.error("Trajet vide");
+                    setIsLoading(false);
+                    return;
+                }
+
+                setRoute(parsedRoute);
+                setDestination(parsedRoute[parsedRoute.length - 1]);
+
+                if (parsedSteps.length > 0) {
+                    setNavigationSteps(parsedSteps);
+                    const maneuvers = extractManeuverPoints(parsedSteps);
+                    setManeuverPoints(maneuvers);
+                }
+
+                // Si pas de trajet vers le départ, on est déjà au départ
+                if (parsedRouteStartIndex === 0) {
+                    setHasReachedStart(true);
+                }
+
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 if (status !== "granted") {
                     console.log("Permission GPS refusée");
@@ -260,14 +294,6 @@ export default function MapScreen() {
                 });
 
                 setUserLocation({ latitude, longitude });
-
-                console.log("Chargement du trajet avec le code:", routeCode);
-                const success = await fetchRouteByRouteCode(routeCode);
-
-                if (!success) {
-                    console.error("Impossible de charger l'itinéraire avec le code:", routeCode);
-                }
-
                 setIsLoading(false);
             } catch (error) {
                 console.error("Erreur lors de l'initialisation:", error);
@@ -276,7 +302,7 @@ export default function MapScreen() {
         };
 
         initLocation();
-    }, [routeCode]);
+    }, [coordinates]);
 
     // Suivi GPS
     useEffect(() => {
@@ -334,6 +360,8 @@ export default function MapScreen() {
                     const speedKmh = currentSpeedMps ? currentSpeedMps * 3.6 : 0;
                     const closestIndex = findClosestRoutePoint(newPosition, route);
                     setCurrentRouteIndex(closestIndex);
+
+
 
                     const distanceLeft = calculateRemainingDistance(newPosition, route, closestIndex);
                     const avgSpeed = updateAverageSpeed(speedKmh);
@@ -448,8 +476,21 @@ export default function MapScreen() {
                             strokeWidth={10}
                         />
 
-                        {/* Prochain virage uniquement */}
-                        {nextTurnOverlay && (
+                        {/* Flèches trajet vers le départ */}
+                        {!hasReachedStart && parsedRouteStartIndex > 0 && routeToStartArrows.map((arrow, index) => (
+                            <Marker
+                                key={`to-start-arrow-${index}`}
+                                coordinate={arrow.coordinate}
+                                anchor={{ x: 0.5, y: 0.5 }}
+                                rotation={arrow.bearing}
+                                zIndex={10}
+                                tracksViewChanges={false}
+                                image={require("../assets/arrow_route.png")}
+                            />
+                        ))}
+
+                        {/* Prochain virage du trajet principal */}
+                        {hasReachedStart && nextTurnOverlay && (
                             <React.Fragment>
                                 <Polyline
                                     coordinates={nextTurnOverlay.polylineCoords}
@@ -491,6 +532,34 @@ export default function MapScreen() {
             </MapView>
 
             <NavigationInstruction instruction={nextInstruction} />
+
+            {/* Bouton "Je suis au départ" au-dessus des métriques */}
+            {!hasReachedStart && parsedRouteStartIndex > 0 && (
+                <TouchableOpacity
+                    style={{
+                        position: "absolute",
+                        bottom: 110,
+                        left: 10,
+                        right: 10,
+                        backgroundColor: "rgba(40, 167, 69, 0.95)",
+                        borderRadius: 12,
+                        padding: 15,
+                        alignItems: "center",
+                        elevation: 6,
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 3.84,
+                    }}
+                    onPress={() => {
+                        setHasReachedStart(true);
+                    }}
+                >
+                    <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
+                        🚩 Je suis au départ — Commencer !
+                    </Text>
+                </TouchableOpacity>
+            )}
 
             <NavigationStats
                 speed={navigationStats.speed}

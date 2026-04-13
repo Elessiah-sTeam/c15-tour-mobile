@@ -103,40 +103,35 @@ export const findNextInstruction = (
     // Trouver le point le plus proche sur le trajet
     const closestIndex = findClosestRoutePoint(currentPos, routeCoordinates);
 
-    // Parcourir les steps pour trouver celui qui correspond
-    let cumulativeDistance = 0;
+    // Construire la liste des index de route correspondant à chaque manœuvre
+    // en cherchant le point le plus proche de chaque maneuver.location dans routeCoordinates
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
-        const stepCoords = step.geometry.coordinates.map(coord => ({
-            latitude: coord[1],
-            longitude: coord[0],
-        }));
 
-        cumulativeDistance += stepCoords.length;
+        if (step.maneuver.type === 'arrive') continue;
 
-        // Si on n'a pas encore dépassé notre position, continuer
-        if (closestIndex > cumulativeDistance) {
-            continue;
-        }
-
-        // Calculer la distance jusqu'au point de manœuvre
-        const maneuverPoint = {
+        const maneuverPoint: RoutePoint = {
             latitude: step.maneuver.location[1],
             longitude: step.maneuver.location[0],
         };
 
-        const distanceToManeuver = calculateDistance(
+        // Index du point de manœuvre dans la route globale
+        const maneuverIndex = findClosestRoutePoint(maneuverPoint, routeCoordinates);
+
+        // Ce step est devant nous si son index de manœuvre est après notre position
+        if (maneuverIndex <= closestIndex) continue;
+
+        const distToManeuver = calculateDistance(
             currentPos.latitude,
             currentPos.longitude,
             maneuverPoint.latitude,
             maneuverPoint.longitude
         );
 
-        // Retourner l'instruction du prochain step
         const instructions = parseStepsToInstructions([step]);
         return {
             ...instructions[0],
-            distance: distanceToManeuver,
+            distance: distToManeuver,
         };
     }
 

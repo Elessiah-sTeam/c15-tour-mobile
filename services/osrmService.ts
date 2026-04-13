@@ -8,8 +8,9 @@ const API_BASE_URL = 'http://10.0.2.2:8080';
 interface FetchRouteResult {
     coordinates: RoutePoint[] | null;
     steps: NavigationStep[] | null;
-    totalDistance: number | null; // Distance totale en km
-    totalDuration: number | null; // Durée totale en minutes
+    totalDistance: number | null;
+    totalDuration: number | null;
+    tourId: number | null;
     error?: 'not_found' | 'network' | 'invalid_format';
 }
 
@@ -19,19 +20,26 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         const url = `${API_BASE_URL}/tours/share/${routeCode}`;
 
         console.log("Appel API:", url);
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Authorization": 'Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc3NjA2NzgzNSwiZXhwIjoxNzc2MTU0MjM1fQ.66r5n3M35iDnrhuRL0tLVchMXX4QhRsVWrBXHHFWayazdkauDK2fIF_iT9Nj3X7j',
+                "Content-Type": "application/json"
+            }
+        });
 
         if (response.status === 404) {
             console.error("Code d'itinéraire invalide:", routeCode);
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, error: 'not_found' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'not_found' };
         }
 
         if (!response.ok) {
             console.error("Erreur API:", response.status);
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, error: 'network' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'network' };
         }
 
         const data = await response.json();
+        const tourId: number | null = data.id ?? null;
 
         console.log("Données reçues de l'API:", data);
         console.log("Nombre de segments:", data.segments?.length);
@@ -94,15 +102,16 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                 coordinates: allCoordinates.length > 0 ? allCoordinates : null,
                 steps: allSteps.length > 0 ? allSteps : null,
                 totalDistance: totalDistanceKm,
-                totalDuration: totalDurationMin
+                totalDuration: totalDurationMin,
+                tourId,
             };
         }
 
         console.error("Format de réponse API non reconnu ou pas de segments");
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, error: 'invalid_format' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'invalid_format' };
     } catch (error) {
         console.error("Erreur lors de la récupération du trajet:", error);
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, error: 'network' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'network' };
     }
 };
 
@@ -134,6 +143,51 @@ export const fetchRouteFromOSRM = async (start: RoutePoint, end: RoutePoint): Pr
         }
     } catch (error) {
         console.error("Erreur lors de la récupération du trajet:", error);
+        return null;
+    }
+};
+// Récupérer le trajet de la position utilisateur jusqu'au point de départ du tour
+export const fetchRouteToStart = async (
+    tourId: number,
+    userLocation: RoutePoint
+): Promise<RoutePoint[] | null> => {
+    try {
+        const url = `${API_BASE_URL}/tours/${tourId}/route-to-start`;
+        console.log("Appel route-to-start:", url);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                "accept": 'application/json',
+                "Authorization": 'Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc3NjA2NzgzNSwiZXhwIjoxNzc2MTU0MjM1fQ.66r5n3M35iDnrhuRL0tLVchMXX4QhRsVWrBXHHFWayazdkauDK2fIF_iT9Nj3X7j',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                coordinates: {
+                    latitude: userLocation.latitude,
+                    longitude: userLocation.longitude,
+                }
+            }),
+        });
+
+        if (!response.ok) {
+            console.error("Erreur route-to-start:", response.status);
+            return null;
+        }
+
+        const data = await response.json();
+        const geometryObject = JSON.parse(data.geometry);
+
+        if (geometryObject.coordinates && Array.isArray(geometryObject.coordinates)) {
+            return geometryObject.coordinates.map((coord: [number, number]) => ({
+                latitude: coord[1],
+                longitude: coord[0],
+            }));
+        }
+
+        return null;
+    } catch (error) {
+        console.error("Erreur lors de la récupération du trajet vers le départ:", error);
         return null;
     }
 };

@@ -10,16 +10,19 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import Modal from "react-native-modal";
 import { router } from "expo-router";
+import { fetchRouteByCode } from "@/services/osrmService";
 
 export default function HomeScreen() {
-    const [isModalVisible, setModalVisible] = useState(false);
-    const [itineraire, setItineraire] = useState("");
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [itineraire, setItineraire] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const toggleModal = () => setModalVisible(!isModalVisible);
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const code = itineraire.trim();
 
     if (code.length === 0) {
@@ -27,64 +30,91 @@ export default function HomeScreen() {
       return;
     }
 
+    setIsLoading(true);
+    const result = await fetchRouteByCode(code);
+    setIsLoading(false);
+
+    if (!result.coordinates || !result.tourId) {
+      let errorMessage = "";
+      if (result.error === 'not_found') {
+        errorMessage = "Code d'itinéraire invalide. Veuillez vérifier le code et réessayer.";
+      } else if (result.error === 'network') {
+        errorMessage = "Erreur de connexion. Vérifiez votre connexion internet.";
+      } else {
+        errorMessage = "Erreur lors du chargement de l'itinéraire.";
+      }
+      Alert.alert("Erreur", errorMessage);
+      return;
+    }
+
     setModalVisible(false);
-
-    // Passer le code à MapScreen via les paramètres de navigation
-    router.push({
-      pathname: "/map",
-      params: { routeCode: code }
-    });
-
-    // Réinitialiser le champ
     setItineraire("");
+
+    router.push({
+      pathname: "/route-preview",
+      params: {
+        tourId: result.tourId,
+        coordinates: JSON.stringify(result.coordinates),
+        steps: JSON.stringify(result.steps ?? []),
+        totalDistance: result.totalDistance ?? 0,
+        totalDuration: result.totalDuration ?? 0,
+      }
+    });
   };
 
 
   return (
-    <ImageBackground
-      source={require("../assets/background.png")}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={styles.logoContainer}>
+      <ImageBackground
+          source={require("../assets/background.png")}
+          style={styles.background}
+          resizeMode="cover"
+      >
+        <View style={styles.logoContainer}>
           <Image
-            source={require("../assets/logo.png")}
-            resizeMode="contain"
+              source={require("../assets/logo.png")}
+              resizeMode="contain"
           />
-      </View>
+        </View>
 
-      {/* Bouton */}
-      <TouchableOpacity style={styles.button} onPress={toggleModal}>
-        <Text style={styles.buttonText}>CHARGER UN ITINÉRAIRE</Text>
-      </TouchableOpacity>
+        {/* Bouton */}
+        <TouchableOpacity style={styles.button} onPress={toggleModal}>
+          <Text style={styles.buttonText}>CHARGER UN ITINÉRAIRE</Text>
+        </TouchableOpacity>
 
-      <Modal
-          isVisible={isModalVisible}
-          onBackdropPress={toggleModal}
-          style={styles.modal}
-          swipeDirection="down"
-          onSwipeComplete={toggleModal}
+        <Modal
+            isVisible={isModalVisible}
+            onBackdropPress={toggleModal}
+            style={styles.modal}
+            swipeDirection="down"
+            onSwipeComplete={toggleModal}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.modalContent}
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={styles.modalContent}
           >
             <View style={styles.handle} />
 
             <Text style={styles.modalTitle}>CHARGER UN ITINÉRAIRE</Text>
 
             <TextInput
-              style={styles.input}
-              value={itineraire}
-              onChangeText={setItineraire}
+                style={styles.input}
+                value={itineraire}
+                onChangeText={setItineraire}
             />
 
-            <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-              <Text style={styles.submitButtonText}>EN ROUTE !</Text>
+            <TouchableOpacity
+                style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+                onPress={handleSubmit}
+                disabled={isLoading}
+            >
+              {isLoading
+                  ? <ActivityIndicator color="#C02C6C" />
+                  : <Text style={styles.submitButtonText}>EN ROUTE !</Text>
+              }
             </TouchableOpacity>
           </KeyboardAvoidingView>
-      </Modal>
-    </ImageBackground>
+        </Modal>
+      </ImageBackground>
   );
 }
 const styles = StyleSheet.create({
@@ -136,52 +166,55 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   modal: {
-      justifyContent: 'flex-end',
-      margin: 0,
-    },
-    modalContent: {
-      backgroundColor: '#fff',
-      padding: 30,
-      borderTopLeftRadius: 30,
-      borderTopRightRadius: 30,
-      alignItems: 'center',
-      minHeight: '40%',
-    },
-    handle: {
-      width: 50,
-      height: 5,
-      backgroundColor: '#ccc',
-      borderRadius: 3,
-      marginBottom: 20,
-    },
-    modalTitle: {
-      fontSize: 20,
-      color: '#C02C6C',
-      fontWeight: '700',
-      marginBottom: 15,
-    },
-    input: {
-      width: '100%',
-      borderWidth: 1,
-      borderColor: '#C02C6C',
-      borderRadius: 25,
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      marginBottom: 25,
-      fontSize: 16,
-    },
-    submitButton: {
-      backgroundColor: '#fff',
-      borderWidth: 1,
-      borderColor: '#C02C6C',
-      borderRadius: 25,
-      paddingVertical: 14,
-      width: '60%',
-      alignItems: 'center',
-    },
-    submitButtonText: {
-      color: '#C02C6C',
-      fontWeight: '700',
-      fontSize: 20,
-    },
+    justifyContent: 'flex-end',
+    margin: 0,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    padding: 30,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    alignItems: 'center',
+    minHeight: '40%',
+  },
+  handle: {
+    width: 50,
+    height: 5,
+    backgroundColor: '#ccc',
+    borderRadius: 3,
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    color: '#C02C6C',
+    fontWeight: '700',
+    marginBottom: 15,
+  },
+  input: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#C02C6C',
+    borderRadius: 25,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 25,
+    fontSize: 16,
+  },
+  submitButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#C02C6C',
+    borderRadius: 25,
+    paddingVertical: 14,
+    width: '60%',
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: '#C02C6C',
+    fontWeight: '700',
+    fontSize: 20,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
 });
