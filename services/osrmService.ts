@@ -11,6 +11,7 @@ interface FetchRouteResult {
     totalDistance: number | null;
     totalDuration: number | null;
     tourId: number | null;
+    role: 'PARTICIPANT' | 'ORGANISER' | null;
     error?: 'not_found' | 'network' | 'invalid_format';
 }
 
@@ -30,16 +31,17 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
 
         if (response.status === 404) {
             console.error("Code d'itinéraire invalide:", routeCode);
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'not_found' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, role: null, error: 'not_found' };
         }
 
         if (!response.ok) {
             console.error("Erreur API:", response.status);
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'network' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, role: null, error: 'network' };
         }
 
         const data = await response.json();
         const tourId: number | null = data.id ?? null;
+        const role: 'PARTICIPANT' | 'ORGANISER' | null = data.role ?? null;
 
         console.log("Données reçues de l'API:", data);
         console.log("Nombre de segments:", data.segments?.length);
@@ -104,14 +106,15 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                 totalDistance: totalDistanceKm,
                 totalDuration: totalDurationMin,
                 tourId,
+                role,
             };
         }
 
         console.error("Format de réponse API non reconnu ou pas de segments");
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'invalid_format' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, role: null, error: 'invalid_format' };
     } catch (error) {
         console.error("Erreur lors de la récupération du trajet:", error);
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'network' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, role: null, error: 'network' };
     }
 };
 
