@@ -20,13 +20,7 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         const url = `${API_BASE_URL}/tours/share/${routeCode}`;
 
         console.log("Appel API:", url);
-        const response = await fetch(url, {
-            method: "GET",
-            headers: {
-                "Authorization": 'Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc3NjA2NzgzNSwiZXhwIjoxNzc2MTU0MjM1fQ.66r5n3M35iDnrhuRL0tLVchMXX4QhRsVWrBXHHFWayazdkauDK2fIF_iT9Nj3X7j',
-                "Content-Type": "application/json"
-            }
-        });
+        const response = await fetch(url);
 
         if (response.status === 404) {
             console.error("Code d'itinéraire invalide:", routeCode);
@@ -45,8 +39,8 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         console.log("Nombre de segments:", data.segments?.length);
 
         // Récupérer les valeurs totales de l'API
-        const totalDistanceKm = data.totalDistance ? data.totalDistance / 1000 : null; // Conversion m → km
-        const totalDurationMin = data.totalDuration ? data.totalDuration / 60 : null; // Conversion s → min
+        const totalDistanceKm = data.totalDistance ? data.totalDistance / 1000 : null;
+        const totalDurationMin = data.totalDuration ? data.totalDuration / 60 : null;
 
         console.log("Distance totale:", totalDistanceKm, "km");
         console.log("Durée totale:", totalDurationMin, "min");
@@ -56,12 +50,10 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
             let allCoordinates: RoutePoint[] = [];
             let allSteps: NavigationStep[] = [];
 
-            // Parcourir tous les segments
             for (let i = 0; i < data.segments.length; i++) {
                 const segment = data.segments[i];
                 console.log(`Traitement du segment ${i + 1}/${data.segments.length}`);
 
-                // Parser la geometry du segment
                 const geometryString = segment.geometry;
                 const geometryObject = JSON.parse(geometryString);
 
@@ -73,16 +65,13 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                         })
                     );
 
-                    // Éviter les doublons : si ce n'est pas le premier segment,
-                    // ne pas ajouter le premier point (qui est le dernier du segment précédent)
                     if (i > 0 && segmentCoordinates.length > 0) {
-                        segmentCoordinates.shift(); // Retire le premier point
+                        segmentCoordinates.shift();
                     }
 
                     allCoordinates = allCoordinates.concat(segmentCoordinates);
                 }
 
-                // Parser les steps du segment
                 const stepsString = segment.steps;
                 try {
                     const segmentSteps = JSON.parse(stepsString);
@@ -95,8 +84,6 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
             }
 
             console.log("Trajet complet - Points:", allCoordinates.length, "Steps:", allSteps.length);
-            console.log("Premier point:", allCoordinates[0]);
-            console.log("Dernier point:", allCoordinates[allCoordinates.length - 1]);
 
             return {
                 coordinates: allCoordinates.length > 0 ? allCoordinates : null,
@@ -146,6 +133,7 @@ export const fetchRouteFromOSRM = async (start: RoutePoint, end: RoutePoint): Pr
         return null;
     }
 };
+
 // Récupérer le trajet de la position utilisateur jusqu'au point de départ du tour
 export const fetchRouteToStart = async (
     tourId: number,
@@ -157,16 +145,10 @@ export const fetchRouteToStart = async (
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                "accept": 'application/json',
-                "Authorization": 'Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc3NjA2NzgzNSwiZXhwIjoxNzc2MTU0MjM1fQ.66r5n3M35iDnrhuRL0tLVchMXX4QhRsVWrBXHHFWayazdkauDK2fIF_iT9Nj3X7j',
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                coordinates: {
-                    latitude: userLocation.latitude,
-                    longitude: userLocation.longitude,
-                }
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
             }),
         });
 
@@ -190,4 +172,118 @@ export const fetchRouteToStart = async (
         console.error("Erreur lors de la récupération du trajet vers le départ:", error);
         return null;
     }
+};
+
+// Rejoindre en tant qu'organisateur — retourne le token si code valide, null sinon
+export const joinAsOrganiser = async (code: string): Promise<string | null> => {
+    try {
+        const url = `${API_BASE_URL}/tours/share/${code}/join`;
+        console.log("Tentative join organisateur:", url);
+
+        const response = await fetch(url, { method: 'GET' });
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        return data.token ?? null;
+    } catch (error) {
+        console.error("Erreur join organisateur:", error);
+        return null;
+    }
+};
+
+// Envoyer la position de l'organisateur
+export const sendOrganiserPosition = async (
+    code: string,
+    token: string,
+    position: RoutePoint
+): Promise<void> => {
+    try {
+        const url = `${API_BASE_URL}/tours/share/${code}/organiser-position`;
+        await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                latitude: position.latitude,
+                longitude: position.longitude,
+            }),
+        });
+    } catch (error) {
+        console.error("Erreur envoi position organisateur:", error);
+    }
+};
+
+// S'abonner au stream SSE de la position de l'organisateur via XHR (fetch bloque en RN sur les SSE)
+// Retourne une fonction de nettoyage à appeler pour fermer la connexion
+export const subscribeToOrganiserPosition = (
+    code: string,
+    onPosition: (position: RoutePoint) => void,
+    onError?: (error: Error) => void
+): (() => void) => {
+    let isActive = true;
+    let xhr: XMLHttpRequest | null = null;
+
+    const parsePositionLine = (line: string): RoutePoint | null => {
+        const jsonStr = line.startsWith('data: ') ? line.slice(6) : line.trim();
+        if (!jsonStr) return null;
+        try {
+            const data = JSON.parse(jsonStr);
+            if (data.latitude != null && data.longitude != null) {
+                return { latitude: data.latitude, longitude: data.longitude };
+            }
+        } catch { /* ligne non-JSON, on ignore */ }
+        return null;
+    };
+
+    const connect = () => {
+        if (!isActive) return;
+
+        const url = `${API_BASE_URL}/tours/share/${code}/organiser-position/stream`;
+        console.log('[SSE] Connexion:', url);
+
+        xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.setRequestHeader('Accept', 'text/event-stream');
+        xhr.setRequestHeader('Cache-Control', 'no-cache');
+
+        let processedLength = 0;
+
+        xhr.onprogress = () => {
+            if (!xhr) return;
+            const newData = xhr.responseText.slice(processedLength);
+            processedLength = xhr.responseText.length;
+
+            for (const line of newData.split('\n')) {
+                const pos = parsePositionLine(line);
+                if (pos) {
+                    console.log('[SSE] Position reçue:', pos);
+                    onPosition(pos);
+                }
+            }
+        };
+
+        xhr.onload = () => {
+            console.log('[SSE] Stream fermé par le serveur, reconnexion dans 3s');
+            if (isActive) setTimeout(connect, 3000);
+        };
+
+        xhr.onerror = () => {
+            console.error('[SSE] Erreur réseau, reconnexion dans 3s');
+            onError?.(new Error('Erreur réseau SSE'));
+            if (isActive) setTimeout(connect, 3000);
+        };
+
+        xhr.send();
+    };
+
+    connect();
+
+    return () => {
+        isActive = false;
+        xhr?.abort();
+        xhr = null;
+    };
 };

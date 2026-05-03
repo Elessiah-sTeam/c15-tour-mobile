@@ -3,10 +3,11 @@ import { View, TouchableOpacity, Text } from "react-native";
 import MapView, { Marker, Polyline, UrlTile, Region } from "react-native-maps";
 import * as Location from "expo-location";
 import { useLocalSearchParams, router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 // Imports
 import { mapStyles } from "@/styles/MapStyles";
-import { fetchRouteFromOSRM } from "@/services/osrmService";
+import { fetchRouteFromOSRM, sendOrganiserPosition, subscribeToOrganiserPosition } from "@/services/osrmService";
 import {
     RoutePoint,
     NavigationInstruction as NavigationInstructionType,
@@ -130,7 +131,7 @@ export default function MapScreen() {
     const mapRef = useRef<MapView | null>(null);
 
     // Récupérer les paramètres transmis par RoutePreviewScreen
-    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart } =
+    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart, isOrganiser, organiserToken, routeCode } =
         useLocalSearchParams<{
             coordinates: string;
             steps: string;
@@ -138,7 +139,12 @@ export default function MapScreen() {
             totalDuration: string;
             routeStartIndex: string;
             routeToStart: string;
+            isOrganiser: string;
+            organiserToken: string;
+            routeCode: string;
         }>();
+
+    const parsedIsOrganiser = isOrganiser === "true";
 
     const parsedRouteStartIndex = routeStartIndex ? parseInt(routeStartIndex) : 0;
     const parsedRouteToStart: RoutePoint[] = useMemo(() => {
@@ -155,6 +161,7 @@ export default function MapScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [isMoving, setIsMoving] = useState(false);
     const lastUserInteraction = useRef<number>(0);
+    const [isMapInteracted, setIsMapInteracted] = useState(false);
 
     // Itinéraire
     const [route, setRoute] = useState<RoutePoint[]>([]);
@@ -174,6 +181,7 @@ export default function MapScreen() {
     });
     const [nextInstruction, setNextInstruction] = useState<NavigationInstructionType | null>(null);
     const [hasReachedStart, setHasReachedStart] = useState(false);
+    const [organiserLocation, setOrganiserLocation] = useState<RoutePoint | null>(null);
 
     // Historique et filtres
     const speedHistory = useRef<number[]>([]);
@@ -181,6 +189,8 @@ export default function MapScreen() {
     const previousLocation = useRef<RoutePoint | null>(null);
     const smoothedHeading = useRef<number>(0);
     const SMOOTHING_FACTOR = 0.15;
+    // Ref pour accéder à userLocation dans l'interval sans le redémarrer à chaque update GPS
+    const userLocationRef = useRef<RoutePoint | null>(null);
 
     // Overlays de virage
     const turnOverlays = useMemo(() => computeTurnOverlays(navigationSteps, route), [navigationSteps, route]);
@@ -223,6 +233,32 @@ export default function MapScreen() {
         const sum = speedHistory.current.reduce((acc, speed) => acc + speed, 0);
         return speedHistory.current.length > 0 ? sum / speedHistory.current.length : 0;
     };
+
+
+    // Organisateur : envoyer sa position toutes les 5s
+    useEffect(() => {
+        if (!routeCode || !parsedIsOrganiser || !organiserToken) return;
+
+        const interval = setInterval(() => {
+            if (userLocationRef.current) {
+                sendOrganiserPosition(routeCode, organiserToken, userLocationRef.current);
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [routeCode, parsedIsOrganiser, organiserToken]);
+
+    // Participant : s'abonner au stream SSE de la position de l'organisateur
+    useEffect(() => {
+        if (!routeCode || parsedIsOrganiser) return;
+
+        const unsubscribe = subscribeToOrganiserPosition(
+            routeCode,
+            (pos) => setOrganiserLocation(pos),
+        );
+
+        return unsubscribe;
+    }, [routeCode, parsedIsOrganiser]);
 
     // Initialisation
     useEffect(() => {
@@ -335,6 +371,7 @@ export default function MapScreen() {
                     }
 
                     setUserLocation(newPosition);
+                    userLocationRef.current = newPosition;
 
                     if (previousLocation.current && currentSpeedMps && currentSpeedMps > 0.5) {
                         setIsMoving(true);
@@ -400,6 +437,7 @@ export default function MapScreen() {
                             heading: smoothedHeading.current,
                             pitch: 45,
                         }, { duration: 300 });
+                        setIsMapInteracted(false);
                     }
                 }
             );
@@ -439,6 +477,7 @@ export default function MapScreen() {
                                     heading: smoothedHeading.current,
                                     pitch: 45,
                                 }, { duration: 300 });
+                                setIsMapInteracted(false);
                             }
                         }
                     }
@@ -463,8 +502,8 @@ export default function MapScreen() {
                 style={mapStyles.map}
                 region={region}
                 showsUserLocation={false}
-                onPanDrag={() => lastUserInteraction.current = Date.now()}
-                onTouchStart={() => lastUserInteraction.current = Date.now()}
+                onPanDrag={() => { lastUserInteraction.current = Date.now(); setIsMapInteracted(true); }}
+                onTouchStart={() => { lastUserInteraction.current = Date.now(); setIsMapInteracted(true); }}
             >
                 <UrlTile urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
 
@@ -529,6 +568,18 @@ export default function MapScreen() {
                         image={require("../assets/fleche.png")}
                     />
                 )}
+
+                {/* Position de l'organisateur (visible par les participants) */}
+                {!parsedIsOrganiser && organiserLocation && (
+                    <Marker
+                        coordinate={organiserLocation}
+                        anchor={{ x: 0.5, y: 0.5 }}
+                        zIndex={900}
+                        title="Organisateur"
+                        flat={true}
+                        image={require("../assets/fleche_organisateur.png")}
+                    />
+                )}
             </MapView>
 
             <NavigationInstruction instruction={nextInstruction} />
@@ -568,12 +619,13 @@ export default function MapScreen() {
                 isRecalculating={isRecalculating}
             />
 
-            {userLocation && (
+            {userLocation && isMapInteracted && (
                 <TouchableOpacity
                     style={mapStyles.recenterButton}
                     onPress={() => {
                         if (!userLocation) return;
                         lastUserInteraction.current = 0;
+                        setIsMapInteracted(false);
                         mapRef.current?.animateCamera({
                             center: userLocation,
                             pitch: 45,
@@ -582,7 +634,7 @@ export default function MapScreen() {
                         }, { duration: 500 });
                     }}
                 >
-                    <Text style={{ color: "white", fontWeight: "bold", fontSize: 20 }}>📍</Text>
+                    <Ionicons name="locate" size={24} color="white" />
                 </TouchableOpacity>
             )}
 
