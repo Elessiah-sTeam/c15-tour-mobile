@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "a87ce87b71ebab8104cc408a44647b5617aa2b65",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "c15-mobile"
+    }
+  }
+}

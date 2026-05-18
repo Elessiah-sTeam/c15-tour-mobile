@@ -2,6 +2,25 @@
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
+## Semantic Versioning
+
+Le dépôt est configuré pour générer des releases sémantiques via GitHub Actions sur la branche `dev`.
+
+- `fix:` déclenche un bump `PATCH`
+- `feat:` déclenche un bump `MINOR`
+- `BREAKING CHANGE:` ou `type!:` déclenche un bump `MAJOR`
+- les tags publiés suivent le format `vX.Y.Z`
+
+Exemples de commits attendus :
+
+```text
+fix: corrige l'affichage de la carte mobile
+feat: ajoute le partage du code organisateur
+feat!: modifie le format des données de trajet
+```
+
+Le workflow de release s'appuie sur `release-please`, `Conventional Commits` et met à jour `CHANGELOG.md` automatiquement.
+
 ## Get started
 
 1. Install dependencies
