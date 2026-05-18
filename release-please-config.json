@@ -4,7 +4,8 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "c15-mobile"
+      "package-name": "c15-tour-mobile",
+      "include-component-in-tag": "false"
     }
   }
 }
