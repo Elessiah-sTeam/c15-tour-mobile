@@ -25,6 +25,11 @@ import {
 import { NavigationStats } from "@/components/NavigationStats";
 import { NavigationInstruction } from "@/components/NavigationInstruction";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { AudioRecordButton } from "@/components/AudioRecordButton";
+import { AudioNotificationBanner } from "@/components/AudioNotificationBanner";
+import { AudioHistoryModal, StoredAudioMessage } from "@/components/AudioHistoryModal";
+import { fetchAudioMessages, downloadAudioFile } from "@/services/audioService";
+import { Audio } from "expo-av";
 
 interface NavigationStatsInterface {
     speed: number;
@@ -183,6 +188,14 @@ export default function MapScreen() {
     const [hasReachedStart, setHasReachedStart] = useState(false);
     const [organiserLocation, setOrganiserLocation] = useState<RoutePoint | null>(null);
 
+    // Audio messages (participants)
+    const [audioMessages, setAudioMessages] = useState<StoredAudioMessage[]>([]);
+    const [showAudioNotification, setShowAudioNotification] = useState(false);
+    const [showAudioHistory, setShowAudioHistory] = useState(false);
+    const lastPlayedIdRef = useRef<number | null>(null);
+    const audioQueueRef = useRef<string[]>([]);
+    const isPlayingAudioRef = useRef(false);
+
     // Historique et filtres
     const speedHistory = useRef<number[]>([]);
     const MAX_SPEED_HISTORY = 10;
@@ -234,6 +247,68 @@ export default function MapScreen() {
         return speedHistory.current.length > 0 ? sum / speedHistory.current.length : 0;
     };
 
+
+    // Lecture audio séquentielle (file d'attente)
+    const playNextAudio = async () => {
+        if (isPlayingAudioRef.current || audioQueueRef.current.length === 0) return;
+        const uri = audioQueueRef.current.shift()!;
+        isPlayingAudioRef.current = true;
+        try {
+            await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+            const { sound } = await Audio.Sound.createAsync({ uri });
+            await sound.playAsync();
+            sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                    sound.unloadAsync();
+                    isPlayingAudioRef.current = false;
+                    playNextAudio();
+                }
+            });
+        } catch (err) {
+            console.error('[Audio] Erreur lecture auto:', err);
+            isPlayingAudioRef.current = false;
+            playNextAudio();
+        }
+    };
+
+    // Participant : polling audio toutes les 2s
+    useEffect(() => {
+        if (!routeCode || parsedIsOrganiser) return;
+
+        const poll = async () => {
+            const messages = await fetchAudioMessages(routeCode);
+            if (messages.length === 0) return;
+
+            const maxId = Math.max(...messages.map(m => m.id));
+
+            // Premier poll : initialiser sans lire pour éviter de rejouer l'historique
+            if (lastPlayedIdRef.current === null) {
+                lastPlayedIdRef.current = maxId;
+                return;
+            }
+
+            const newMessages = messages
+                .filter(m => m.id > lastPlayedIdRef.current!)
+                .sort((a, b) => a.id - b.id);
+
+            for (const msg of newMessages) {
+                const localUri = await downloadAudioFile(msg.url, msg.id);
+                if (!localUri) continue;
+
+                setAudioMessages(prev => [...prev, { id: msg.id, createdAt: msg.createdAt, localUri }]);
+                audioQueueRef.current.push(localUri);
+                setShowAudioNotification(true);
+            }
+
+            if (newMessages.length > 0) {
+                lastPlayedIdRef.current = maxId;
+                playNextAudio();
+            }
+        };
+
+        const interval = setInterval(poll, 2000);
+        return () => clearInterval(interval);
+    }, [routeCode, parsedIsOrganiser]);
 
     // Organisateur : envoyer sa position toutes les 5s
     useEffect(() => {
@@ -295,7 +370,7 @@ export default function MapScreen() {
 
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 if (status !== "granted") {
-                    console.log("Permission GPS refusée");
+                    console.error("Permission GPS refusée");
                     setIsLoading(false);
                     return;
                 }
@@ -315,9 +390,8 @@ export default function MapScreen() {
                     });
                     latitude = loc.coords.latitude;
                     longitude = loc.coords.longitude;
-                    console.log("Position GPS réelle récupérée:", latitude, longitude);
                 } catch (gpsError) {
-                    console.warn("GPS non disponible, utilisation position par défaut:", gpsError);
+                    console.error("GPS non disponible, utilisation position par défaut:", gpsError);
                     latitude = 46.480716;
                     longitude = -1.761113;
                 }
@@ -360,15 +434,9 @@ export default function MapScreen() {
                     const { latitude, longitude, speed: currentSpeedMps, accuracy } = pos.coords;
                     const newPosition = { latitude, longitude };
 
-                    if (accuracy && accuracy > 100) {
-                        console.log(`Position ignorée - précision très faible: ${accuracy}m`);
-                        return;
-                    }
+                    if (accuracy && accuracy > 100) return;
 
-                    if (previousLocation.current && !isValidGPSPosition(newPosition, previousLocation.current, 200)) {
-                        console.log("Position ignorée - saut GPS très aberrant");
-                        return;
-                    }
+                    if (previousLocation.current && !isValidGPSPosition(newPosition, previousLocation.current, 200)) return;
 
                     setUserLocation(newPosition);
                     userLocationRef.current = newPosition;
@@ -483,7 +551,7 @@ export default function MapScreen() {
                     }
                 });
             } catch (error) {
-                console.log("Erreur heading:", error);
+                console.error("Erreur boussole:", error);
             }
         };
 
@@ -589,7 +657,7 @@ export default function MapScreen() {
                 <TouchableOpacity
                     style={{
                         position: "absolute",
-                        bottom: 110,
+                        bottom: 120,
                         left: 10,
                         right: 10,
                         backgroundColor: "rgba(40, 167, 69, 0.95)",
@@ -606,8 +674,8 @@ export default function MapScreen() {
                         setHasReachedStart(true);
                     }}
                 >
-                    <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
-                        🚩 Je suis au départ — Commencer !
+                    <Text style={{ color: "white", fontSize: 14, fontWeight: "700" }} numberOfLines={1} adjustsFontSizeToFit>
+                        🚩 Je suis au départ — Cliquer pour commencer !
                     </Text>
                 </TouchableOpacity>
             )}
@@ -618,6 +686,63 @@ export default function MapScreen() {
                 estimatedTime={navigationStats.estimatedTime}
                 isRecalculating={isRecalculating}
             />
+
+            {/* Bouton micro organisateur */}
+            {parsedIsOrganiser && (
+                <View style={{
+                    position: 'absolute',
+                    bottom: 165,
+                    right: 20,
+                }}>
+                    <AudioRecordButton
+                        routeCode={routeCode ?? ''}
+                        organiserToken={organiserToken}
+                    />
+                </View>
+            )}
+
+            {/* Bouton historique audio participant */}
+            {!parsedIsOrganiser && (
+                <TouchableOpacity
+                    style={{
+                        position: 'absolute',
+                        bottom: 165,
+                        right: 20,
+                        backgroundColor: audioMessages.length > 0 ? '#FF6B00' : 'rgba(100,100,100,0.85)',
+                        width: 50,
+                        height: 50,
+                        borderRadius: 25,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        elevation: 5,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 3,
+                    }}
+                    onPress={() => setShowAudioHistory(true)}
+                >
+                    <Ionicons name="mic" size={22} color="white" />
+                    {audioMessages.length > 0 && (
+                        <View style={{
+                            position: 'absolute',
+                            top: -4,
+                            right: -4,
+                            backgroundColor: '#E53935',
+                            borderRadius: 9,
+                            minWidth: 18,
+                            height: 18,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingHorizontal: 3,
+                        }}>
+                            <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>
+                                {audioMessages.length}
+                            </Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
+            )}
 
             {userLocation && isMapInteracted && (
                 <TouchableOpacity
@@ -645,6 +770,19 @@ export default function MapScreen() {
                     </Text>
                 </View>
             )}
+
+            {/* Notification nouveau message audio */}
+            <AudioNotificationBanner
+                visible={showAudioNotification}
+                onHide={() => setShowAudioNotification(false)}
+            />
+
+            {/* Historique des messages audio */}
+            <AudioHistoryModal
+                visible={showAudioHistory}
+                onClose={() => setShowAudioHistory(false)}
+                messages={audioMessages}
+            />
         </View>
     );
 }
