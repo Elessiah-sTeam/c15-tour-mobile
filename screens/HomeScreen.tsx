@@ -7,14 +7,14 @@ import {
   Image,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator,
 } from "react-native";
 import Modal from "react-native-modal";
 import { router } from "expo-router";
-import { fetchRouteByCode } from "@/services/osrmService";
+import { fetchRouteByCode, joinAsOrganiser } from "@/services/osrmService";
 
 export default function HomeScreen() {
   const [isModalVisible, setModalVisible] = useState(false);
@@ -31,6 +31,40 @@ export default function HomeScreen() {
     }
 
     setIsLoading(true);
+
+    // Tester d'abord si c'est un code organisateur
+    const organiserToken = await joinAsOrganiser(code);
+
+    if (organiserToken) {
+      // Mode organisateur
+      const result = await fetchRouteByCode(code);
+      setIsLoading(false);
+
+      if (!result.coordinates || !result.tourId) {
+        Alert.alert("Erreur", "Impossible de charger l'itinéraire organisateur.");
+        return;
+      }
+
+      setModalVisible(false);
+      setItineraire("");
+
+      router.push({
+        pathname: "/route-preview",
+        params: {
+          tourId: result.tourId,
+          coordinates: JSON.stringify(result.coordinates),
+          steps: JSON.stringify(result.steps ?? []),
+          totalDistance: result.totalDistance ?? 0,
+          totalDuration: result.totalDuration ?? 0,
+          isOrganiser: "true",
+          organiserToken,
+          routeCode: code,
+        }
+      });
+      return;
+    }
+
+    // Mode participant normal
     const result = await fetchRouteByCode(code);
     setIsLoading(false);
 
@@ -58,6 +92,9 @@ export default function HomeScreen() {
         steps: JSON.stringify(result.steps ?? []),
         totalDistance: result.totalDistance ?? 0,
         totalDuration: result.totalDuration ?? 0,
+        isOrganiser: "false",
+        organiserToken: "",
+        routeCode: code,
       }
     });
   };
@@ -103,7 +140,7 @@ export default function HomeScreen() {
             />
 
             <TouchableOpacity
-                style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+                style={[styles.submitButton, isLoading && { opacity: 0.6 }]}
                 onPress={handleSubmit}
                 disabled={isLoading}
             >
@@ -213,8 +250,5 @@ const styles = StyleSheet.create({
     color: '#C02C6C',
     fontWeight: '700',
     fontSize: 20,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
   },
 });

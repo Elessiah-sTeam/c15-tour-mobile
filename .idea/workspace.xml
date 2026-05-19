@@ -4,35 +4,13 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte">
+    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: add loading state and error handling for route fetching + update navigation flow">
       <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/.vscode/extensions.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/.vscode/settings.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/app.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/app/_layout.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/app/index.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/app/map.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/arrow_route.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/background.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/fleche.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/logo.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/assets/logo_accueil.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/components/LoadingScreen.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationInstruction.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/components/NavigationStats.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/eslint.config.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/navigation/types.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/package-lock.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/package.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/HomeScreen.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/screens/MapScreen.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/services/osrmService.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/styles/MapStyles.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/tsconfig.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/c15-mobile/utils/navigationUtils.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/screens/HomeScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/HomeScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/screens/MapScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/MapScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/screens/RoutePreviewScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/RoutePreviewScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/osrmService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/osrmService.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,7 +26,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="feature/page-accueil" />
+        <entry key="$PROJECT_DIR$" value="dev" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -77,29 +55,34 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
-    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
-    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
-    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feature/api-request+smooth-rotation&quot;,
-    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/matso/Documents/Travail/SDV/projetC15/c15-tour-mobile/c15-mobile&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;AndroidSdkUpdater&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;C:\\Program Files\\JetBrains\\IntelliJ IDEA 2023.2.5\\plugins\\javascript-impl\\jsLanguageServicesImpl\\external&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "SONARLINT_PRECOMMIT_ANALYSIS": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "feat/position-organisateur",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "C:/Users/matso/Documents/Travail/SDV/projetC15/c15-tour-mobile/assets",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "AndroidSdkUpdater",
+    "ts.external.directory.path": "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2023.2.5\\plugins\\javascript-impl\\jsLanguageServicesImpl\\external",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\matso\Documents\Travail\SDV\projetC15\c15-tour-mobile\assets" />
+      <recent name="C:\Users\matso\Documents\Travail\SDV\projetC15\c15-tour-mobile\app" />
+    </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\matso\Documents\Travail\SDV\projetC15\c15-tour-mobile\c15-mobile\assets" />
       <recent name="C:\Users\matso\Documents\Travail\SDV\projetC15\c15-tour-mobile\c15-mobile\assets\images" />
@@ -125,6 +108,19 @@
       <option name="USE_OPTIONS" value="false" />
       <option name="OPTIONS" value="" />
       <method v="2" />
+    </configuration>
+    <configuration default="true" type="JetRunConfigurationType">
+      <module name="c15-tour-mobile" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration default="true" type="KotlinStandaloneScriptRunConfigurationType">
+      <module name="c15-tour-mobile" />
+      <option name="filePath" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
     </configuration>
     <configuration default="true" type="PyBehaveRunConfigurationType" factoryName="Behave">
       <module name="c15-tour-mobile" />
@@ -210,6 +206,11 @@
       <workItem from="1771961009524" duration="3334000" />
       <workItem from="1771964451320" duration="13000" />
       <workItem from="1772039606760" duration="69000" />
+      <workItem from="1775923010613" duration="12000" />
+      <workItem from="1776066738312" duration="4051000" />
+      <workItem from="1776241777173" duration="35000" />
+      <workItem from="1776756403353" duration="3543000" />
+      <workItem from="1777815565199" duration="298000" />
     </task>
     <task id="LOCAL-00001" summary="init #1: react native and expo">
       <option name="closed" value="true" />
@@ -275,7 +276,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771083832254</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="feat: add loading state and error handling for route fetching + update navigation flow">
+      <option name="closed" value="true" />
+      <created>1776071438920</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1776071438920</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -300,6 +309,7 @@
     <MESSAGE value="feat: mise en place de l'interface de trajet ainsi que d'une fausse requete de trajet dans l'attente de l'api" />
     <MESSAGE value="feat: amelioration de l'achitecture du code + ajout de loading au premier chargement ainsi que lors d'une erreur de trajet" />
     <MESSAGE value="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte" />
+    <MESSAGE value="feat: add loading state and error handling for route fetching + update navigation flow" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add loading state and error handling for route fetching + update navigation flow" />
   </component>
 </project>

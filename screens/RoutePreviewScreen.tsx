@@ -10,7 +10,7 @@ import { fetchRouteToStart } from "@/services/osrmService";
 export default function RoutePreviewScreen() {
     const mapRef = useRef<MapView | null>(null);
 
-    const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration } =
+    const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration, isOrganiser, organiserToken } =
         useLocalSearchParams<{
             routeCode: string;
             tourId: string;
@@ -18,6 +18,8 @@ export default function RoutePreviewScreen() {
             steps: string;
             totalDistance: string;
             totalDuration: string;
+            isOrganiser: string;
+            organiserToken: string;
         }>();
 
     const route: RoutePoint[] = JSON.parse(coordinates ?? "[]");
@@ -72,6 +74,9 @@ export default function RoutePreviewScreen() {
                     totalDuration,
                     routeStartIndex: "0",
                     routeToStart: "[]",
+                    isOrganiser: isOrganiser ?? "false",
+                    organiserToken: organiserToken ?? "",
+                    routeCode: routeCode ?? "",
                 },
             });
             return;
@@ -107,6 +112,9 @@ export default function RoutePreviewScreen() {
                 routeToStart: routeToStart && routeToStart.length > 0
                     ? JSON.stringify(routeToStart)
                     : "[]",
+                isOrganiser: isOrganiser ?? "false",
+                organiserToken: organiserToken ?? "",
+                routeCode: routeCode ?? "",
             },
         });
     };
