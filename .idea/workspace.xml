@@ -4,12 +4,12 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: add loading state and error handling for route fetching + update navigation flow">
-      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
+    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="fix: erreur de body pour la requete api">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/screens/HomeScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/HomeScreen.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/screens/MapScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/MapScreen.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/screens/RoutePreviewScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/RoutePreviewScreen.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/services/osrmService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/osrmService.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -26,7 +26,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="dev" />
+        <entry key="$PROJECT_DIR$" value="feat/position-organisateur" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -65,7 +65,7 @@
     "WebServerToolWindowFactoryState": "false",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "feat/position-organisateur",
+    "git-widget-placeholder": "feat/audio-service",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "C:/Users/matso/Documents/Travail/SDV/projetC15/c15-tour-mobile/assets",
     "node.js.detected.package.eslint": "true",
@@ -108,19 +108,6 @@
       <option name="USE_OPTIONS" value="false" />
       <option name="OPTIONS" value="" />
       <method v="2" />
-    </configuration>
-    <configuration default="true" type="JetRunConfigurationType">
-      <module name="c15-tour-mobile" />
-      <method v="2">
-        <option name="Make" enabled="true" />
-      </method>
-    </configuration>
-    <configuration default="true" type="KotlinStandaloneScriptRunConfigurationType">
-      <module name="c15-tour-mobile" />
-      <option name="filePath" />
-      <method v="2">
-        <option name="Make" enabled="true" />
-      </method>
     </configuration>
     <configuration default="true" type="PyBehaveRunConfigurationType" factoryName="Behave">
       <module name="c15-tour-mobile" />
@@ -210,7 +197,8 @@
       <workItem from="1776066738312" duration="4051000" />
       <workItem from="1776241777173" duration="35000" />
       <workItem from="1776756403353" duration="3543000" />
-      <workItem from="1777815565199" duration="298000" />
+      <workItem from="1777815565199" duration="2196000" />
+      <workItem from="1779175344611" duration="4585000" />
     </task>
     <task id="LOCAL-00001" summary="init #1: react native and expo">
       <option name="closed" value="true" />
@@ -284,7 +272,23 @@
       <option name="project" value="LOCAL" />
       <updated>1776071438920</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="feat: le bouton recentrer est masqué quand la carte est déjà centré + position de l'organisateur affiché via une icone orange&#10;&#10;Closes: #7 #9 #11">
+      <option name="closed" value="true" />
+      <created>1777815938906</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1777815938906</updated>
+    </task>
+    <task id="LOCAL-00011" summary="fix: erreur de body pour la requete api">
+      <option name="closed" value="true" />
+      <created>1779181061920</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1779181061920</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -310,6 +314,8 @@
     <MESSAGE value="feat: amelioration de l'achitecture du code + ajout de loading au premier chargement ainsi que lors d'une erreur de trajet" />
     <MESSAGE value="feat: requete vers une api osrm de test pour visualiser le trajet + ajout de rotation de l'icone utilisateur et de la carte" />
     <MESSAGE value="feat: add loading state and error handling for route fetching + update navigation flow" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: add loading state and error handling for route fetching + update navigation flow" />
+    <MESSAGE value="feat: le bouton recentrer est masqué quand la carte est déjà centré + position de l'organisateur affiché via une icone orange&#10;&#10;Closes: #7 #9 #11" />
+    <MESSAGE value="fix: erreur de body pour la requete api" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: erreur de body pour la requete api" />
   </component>
 </project>
