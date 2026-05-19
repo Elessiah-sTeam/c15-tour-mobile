@@ -147,8 +147,10 @@ export const fetchRouteToStart = async (
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                latitude: userLocation.latitude,
-                longitude: userLocation.longitude,
+                coordinates: {
+                    latitude: userLocation.latitude,
+                    longitude: userLocation.longitude,
+                },
             }),
         });
 
