@@ -29,6 +29,7 @@ import { AudioRecordButton } from "@/components/AudioRecordButton";
 import { AudioNotificationBanner } from "@/components/AudioNotificationBanner";
 import { AudioHistoryModal, StoredAudioMessage } from "@/components/AudioHistoryModal";
 import { fetchAudioMessages, downloadAudioFile } from "@/services/audioService";
+import { Waypoint } from "@/services/osrmService";
 import { Audio } from "expo-av";
 
 interface NavigationStatsInterface {
@@ -136,7 +137,7 @@ export default function MapScreen() {
     const mapRef = useRef<MapView | null>(null);
 
     // Récupérer les paramètres transmis par RoutePreviewScreen
-    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart, isOrganiser, organiserToken, routeCode } =
+    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart, isOrganiser, organiserToken, routeCode, waypoints } =
         useLocalSearchParams<{
             coordinates: string;
             steps: string;
@@ -147,6 +148,7 @@ export default function MapScreen() {
             isOrganiser: string;
             organiserToken: string;
             routeCode: string;
+            waypoints: string;
         }>();
 
     const parsedIsOrganiser = isOrganiser === "true";
@@ -157,6 +159,12 @@ export default function MapScreen() {
         catch { return []; }
     }, [routeToStart]);
     const routeToStartArrows = useMemo(() => computeSimpleArrows(parsedRouteToStart), [parsedRouteToStart]);
+    const intermediateWaypoints: Waypoint[] = useMemo(() => {
+        try {
+            const all: Waypoint[] = waypoints ? JSON.parse(waypoints) : [];
+            return all.slice(1, -1);
+        } catch { return []; }
+    }, [waypoints]);
 
     // États de base
     const [region, setRegion] = useState<Region | null>(null);
@@ -616,6 +624,17 @@ export default function MapScreen() {
                                 />
                             </React.Fragment>
                         )}
+
+                        {/* Étapes intermédiaires */}
+                        {intermediateWaypoints.map((wp, index) => (
+                            <Marker
+                                key={`wp-${index}`}
+                                coordinate={{ latitude: wp.latitude, longitude: wp.longitude }}
+                                title={wp.name}
+                                pinColor="orange"
+                                zIndex={40}
+                            />
+                        ))}
 
                         <Marker
                             coordinate={route[route.length - 1]}

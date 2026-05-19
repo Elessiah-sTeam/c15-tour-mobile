@@ -5,12 +5,12 @@ import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { RoutePoint } from "@/utils/navigationUtils";
-import { fetchRouteToStart } from "@/services/osrmService";
+import { fetchRouteToStart, Waypoint } from "@/services/osrmService";
 
 export default function RoutePreviewScreen() {
     const mapRef = useRef<MapView | null>(null);
 
-    const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration, isOrganiser, organiserToken } =
+    const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration, isOrganiser, organiserToken, waypoints } =
         useLocalSearchParams<{
             routeCode: string;
             tourId: string;
@@ -20,9 +20,13 @@ export default function RoutePreviewScreen() {
             totalDuration: string;
             isOrganiser: string;
             organiserToken: string;
+            waypoints: string;
         }>();
 
     const route: RoutePoint[] = JSON.parse(coordinates ?? "[]");
+    const parsedWaypoints: Waypoint[] = JSON.parse(waypoints ?? "[]");
+    // Exclure le premier (départ) et le dernier (arrivée) déjà affichés par les marqueurs vert/rouge
+    const intermediateWaypoints = parsedWaypoints.slice(1, -1);
     const parsedTourId = parseInt(tourId ?? "0");
     const parsedDistance = parseFloat(totalDistance ?? "0");
     const parsedDuration = parseFloat(totalDuration ?? "0");
@@ -72,6 +76,7 @@ export default function RoutePreviewScreen() {
                     steps,
                     totalDistance,
                     totalDuration,
+                    waypoints: waypoints ?? "[]",
                     routeStartIndex: "0",
                     routeToStart: "[]",
                     isOrganiser: isOrganiser ?? "false",
@@ -106,6 +111,7 @@ export default function RoutePreviewScreen() {
                 steps,
                 totalDistance,
                 totalDuration,
+                waypoints: waypoints ?? "[]",
                 routeStartIndex: routeToStart && routeToStart.length > 0
                     ? String(routeToStart.length - 1)
                     : "0",
@@ -152,6 +158,15 @@ export default function RoutePreviewScreen() {
                             title="Départ"
                             pinColor="green"
                         />
+                        {/* Étapes intermédiaires */}
+                        {intermediateWaypoints.map((wp, index) => (
+                            <Marker
+                                key={`wp-${index}`}
+                                coordinate={{ latitude: wp.latitude, longitude: wp.longitude }}
+                                title={wp.name}
+                                pinColor="orange"
+                            />
+                        ))}
                         {/* Marqueur d'arrivée */}
                         <Marker
                             coordinate={route[route.length - 1]}
