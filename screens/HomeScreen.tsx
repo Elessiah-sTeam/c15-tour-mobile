@@ -14,14 +14,44 @@ import {
 } from "react-native";
 import Modal from "react-native-modal";
 import { router } from "expo-router";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { Ionicons } from "@expo/vector-icons";
 import { fetchRouteByCode, joinAsOrganiser } from "@/services/osrmService";
 
 export default function HomeScreen() {
   const [isModalVisible, setModalVisible] = useState(false);
   const [itineraire, setItineraire] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isScannerOpen, setScannerOpen] = useState(false);
+  const [hasScanned, setHasScanned] = useState(false);
 
-  const toggleModal = () => setModalVisible(!isModalVisible);
+  const [permission, requestPermission] = useCameraPermissions();
+
+  const toggleModal = () => {
+    setModalVisible(!isModalVisible);
+    setScannerOpen(false);
+    setHasScanned(false);
+  };
+
+  const handleOpenScanner = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert("Permission refusée", "L'accès à la caméra est nécessaire pour scanner le QR code.");
+        return;
+      }
+    }
+    setHasScanned(false);
+    setScannerOpen(true);
+  };
+
+  const handleBarcodeScanned = ({ data }: { data: string }) => {
+    if (hasScanned) return;
+    setHasScanned(true);
+    setScannerOpen(false);
+    setItineraire(data.trim());
+  };
+
   const handleSubmit = async () => {
     const code = itineraire.trim();
 
@@ -56,6 +86,7 @@ export default function HomeScreen() {
           steps: JSON.stringify(result.steps ?? []),
           totalDistance: result.totalDistance ?? 0,
           totalDuration: result.totalDuration ?? 0,
+          waypoints: JSON.stringify(result.waypoints ?? []),
           isOrganiser: "true",
           organiserToken,
           routeCode: code,
@@ -92,13 +123,13 @@ export default function HomeScreen() {
         steps: JSON.stringify(result.steps ?? []),
         totalDistance: result.totalDistance ?? 0,
         totalDuration: result.totalDuration ?? 0,
+        waypoints: JSON.stringify(result.waypoints ?? []),
         isOrganiser: "false",
         organiserToken: "",
         routeCode: code,
       }
     });
   };
-
 
   return (
       <ImageBackground
@@ -113,7 +144,6 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Bouton */}
         <TouchableOpacity style={styles.button} onPress={toggleModal}>
           <Text style={styles.buttonText}>CHARGER UN ITINÉRAIRE</Text>
         </TouchableOpacity>
@@ -133,27 +163,55 @@ export default function HomeScreen() {
 
             <Text style={styles.modalTitle}>CHARGER UN ITINÉRAIRE</Text>
 
-            <TextInput
-                style={styles.input}
-                value={itineraire}
-                onChangeText={setItineraire}
-            />
+            {isScannerOpen ? (
+              <View style={styles.scannerContainer}>
+                <CameraView
+                  style={styles.camera}
+                  facing="back"
+                  barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                  onBarcodeScanned={handleBarcodeScanned}
+                />
+                <View style={styles.scannerOverlay}>
+                  <View style={styles.scannerFrame} />
+                </View>
+                <TouchableOpacity style={styles.cancelScanButton} onPress={() => setScannerOpen(false)}>
+                  <Ionicons name="close-circle" size={36} color="white" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={styles.inputRow}>
+                  <TextInput
+                      style={styles.input}
+                      value={itineraire}
+                      onChangeText={setItineraire}
+                      placeholder="Code de l'itinéraire"
+                      placeholderTextColor="#bbb"
+                      autoCapitalize="none"
+                  />
+                  <TouchableOpacity style={styles.cameraButton} onPress={handleOpenScanner}>
+                    <Ionicons name="qr-code-outline" size={24} color="#C02C6C" />
+                  </TouchableOpacity>
+                </View>
 
-            <TouchableOpacity
-                style={[styles.submitButton, isLoading && { opacity: 0.6 }]}
-                onPress={handleSubmit}
-                disabled={isLoading}
-            >
-              {isLoading
-                  ? <ActivityIndicator color="#C02C6C" />
-                  : <Text style={styles.submitButtonText}>EN ROUTE !</Text>
-              }
-            </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.submitButton, isLoading && { opacity: 0.6 }]}
+                    onPress={handleSubmit}
+                    disabled={isLoading}
+                >
+                  {isLoading
+                      ? <ActivityIndicator color="#C02C6C" />
+                      : <Text style={styles.submitButtonText}>EN ROUTE !</Text>
+                  }
+                </TouchableOpacity>
+              </>
+            )}
           </KeyboardAvoidingView>
         </Modal>
       </ImageBackground>
   );
 }
+
 const styles = StyleSheet.create({
   background: {
     flex: 1,
@@ -161,33 +219,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 60,
   },
-
   logoContainer: {
     marginTop: 80,
     alignItems: "center",
     flexDirection: "row",
   },
-
-  logoText: {
-    fontSize: 48,
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-
-  logoNumber: {
-    fontSize: 48,
-    color: "#FFFFFF",
-    fontWeight: "700",
-    marginLeft: 5,
-  },
-
-  logoExclamation: {
-    fontSize: 48,
-    color: "#FFFFFF",
-    fontWeight: "700",
-    marginLeft: 5,
-  },
-
   button: {
     backgroundColor: "#FFFFFF",
     paddingVertical: 16,
@@ -195,7 +231,6 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     marginBottom: 40,
   },
-
   buttonText: {
     color: "#C02C6C",
     fontSize: 16,
@@ -227,15 +262,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 15,
   },
-  input: {
+  inputRow: {
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 25,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: '#C02C6C',
     borderRadius: 25,
     paddingVertical: 12,
     paddingHorizontal: 20,
-    marginBottom: 25,
     fontSize: 16,
+  },
+  cameraButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#C02C6C',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   submitButton: {
     backgroundColor: '#fff',
@@ -250,5 +300,38 @@ const styles = StyleSheet.create({
     color: '#C02C6C',
     fontWeight: '700',
     fontSize: 20,
+  },
+  scannerContainer: {
+    width: '100%',
+    height: 280,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+    position: 'relative',
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scannerFrame: {
+    width: 180,
+    height: 180,
+    borderWidth: 2,
+    borderColor: '#C02C6C',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  cancelScanButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
   },
 });

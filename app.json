@@ -14,7 +14,8 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "L'application a besoin du microphone pour enregistrer les messages vocaux du convoi."
+        "NSMicrophoneUsageDescription": "L'application a besoin du microphone pour enregistrer les messages vocaux du convoi.",
+        "NSCameraUsageDescription": "L'application a besoin de la caméra pour scanner le QR code de l'itinéraire."
       }
     },
     "plugins": [
@@ -23,6 +24,12 @@
         "expo-av",
         {
           "microphonePermission": "L'application a besoin du microphone pour enregistrer les messages vocaux du convoi."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "L'application a besoin de la caméra pour scanner le QR code de l'itinéraire."
         }
       ]
     ],
@@ -34,8 +41,7 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.CAMERA"
       ],
       "package": "com.anonymous.c15tour"
     }

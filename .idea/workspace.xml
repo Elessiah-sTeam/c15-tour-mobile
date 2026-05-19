@@ -4,13 +4,9 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="fix: erreur de body pour la requete api">
+    <list default="true" id="772b4cad-15ff-4176-97ee-0a724389e401" name="Changes" comment="feat: audio message send by orga and auto listen on participant mobile&#10;&#10;Closes: #6">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/screens/MapScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/screens/MapScreen.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/osrmService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/osrmService.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -198,7 +194,7 @@
       <workItem from="1776241777173" duration="35000" />
       <workItem from="1776756403353" duration="3543000" />
       <workItem from="1777815565199" duration="2196000" />
-      <workItem from="1779175344611" duration="4585000" />
+      <workItem from="1779175344611" duration="5894000" />
     </task>
     <task id="LOCAL-00001" summary="init #1: react native and expo">
       <option name="closed" value="true" />
@@ -288,7 +284,15 @@
       <option name="project" value="LOCAL" />
       <updated>1779181061920</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="feat: audio message send by orga and auto listen on participant mobile&#10;&#10;Closes: #6">
+      <option name="closed" value="true" />
+      <created>1779181569951</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1779181569951</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -316,6 +320,7 @@
     <MESSAGE value="feat: add loading state and error handling for route fetching + update navigation flow" />
     <MESSAGE value="feat: le bouton recentrer est masqué quand la carte est déjà centré + position de l'organisateur affiché via une icone orange&#10;&#10;Closes: #7 #9 #11" />
     <MESSAGE value="fix: erreur de body pour la requete api" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: erreur de body pour la requete api" />
+    <MESSAGE value="feat: audio message send by orga and auto listen on participant mobile&#10;&#10;Closes: #6" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: audio message send by orga and auto listen on participant mobile&#10;&#10;Closes: #6" />
   </component>
 </project>

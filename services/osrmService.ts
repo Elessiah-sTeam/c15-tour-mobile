@@ -3,12 +3,19 @@ import polyline from '@mapbox/polyline';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://10.52.85.50:8080';
 
+export interface Waypoint {
+    name: string;
+    latitude: number;
+    longitude: number;
+}
+
 interface FetchRouteResult {
     coordinates: RoutePoint[] | null;
     steps: NavigationStep[] | null;
     totalDistance: number | null;
     totalDuration: number | null;
     tourId: number | null;
+    waypoints: Waypoint[] | null;
     error?: 'not_found' | 'network' | 'invalid_format';
 }
 
@@ -18,11 +25,11 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         const response = await fetch(url);
 
         if (response.status === 404) {
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'not_found' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'not_found' };
         }
         if (!response.ok) {
             console.error('[API] fetchRouteByCode erreur:', response.status);
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'network' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'network' };
         }
 
         const data = await response.json();
@@ -33,6 +40,7 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         if (data.segments && data.segments.length > 0) {
             let allCoordinates: RoutePoint[] = [];
             let allSteps: NavigationStep[] = [];
+            let allWaypoints: Waypoint[] = [];
 
             for (let i = 0; i < data.segments.length; i++) {
                 const segment = data.segments[i];
@@ -54,6 +62,19 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                 } catch {
                     // steps non parsables, on continue sans
                 }
+
+                if (segment.waypoints && Array.isArray(segment.waypoints)) {
+                    const segmentWaypoints: Waypoint[] = segment.waypoints
+                        .filter((wp: any) => wp.coordinates?.latitude != null && wp.coordinates?.longitude != null)
+                        .map((wp: any) => ({
+                            name: wp.name ?? '',
+                            latitude: wp.coordinates.latitude,
+                            longitude: wp.coordinates.longitude,
+                        }));
+                    // Skip first waypoint of subsequent segments (duplicate of previous segment's last)
+                    const waypointsToAdd = i > 0 ? segmentWaypoints.slice(1) : segmentWaypoints;
+                    allWaypoints = allWaypoints.concat(waypointsToAdd);
+                }
             }
 
             return {
@@ -62,14 +83,15 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                 totalDistance: totalDistanceKm,
                 totalDuration: totalDurationMin,
                 tourId,
+                waypoints: allWaypoints.length > 0 ? allWaypoints : null,
             };
         }
 
         console.error('[API] fetchRouteByCode: format invalide ou aucun segment');
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'invalid_format' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'invalid_format' };
     } catch (error) {
         console.error('[API] fetchRouteByCode erreur réseau:', error);
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, error: 'network' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'network' };
     }
 };
 
