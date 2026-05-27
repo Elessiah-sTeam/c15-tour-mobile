@@ -9,6 +9,12 @@ export interface Waypoint {
     longitude: number;
 }
 
+export interface SegmentInfo {
+    name: string | null;
+    estimatedDeparture: string | null;
+    breakDuration: number | null;
+}
+
 interface FetchRouteResult {
     coordinates: RoutePoint[] | null;
     steps: NavigationStep[] | null;
@@ -16,6 +22,7 @@ interface FetchRouteResult {
     totalDuration: number | null;
     tourId: number | null;
     waypoints: Waypoint[] | null;
+    segments: SegmentInfo[] | null;
     error?: 'not_found' | 'network' | 'invalid_format';
 }
 
@@ -25,11 +32,11 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         const response = await fetch(url);
 
         if (response.status === 404) {
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'not_found' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, segments: null, error: 'not_found' };
         }
         if (!response.ok) {
             console.error('[API] fetchRouteByCode erreur:', response.status);
-            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'network' };
+            return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, segments: null, error: 'network' };
         }
 
         const data = await response.json();
@@ -41,6 +48,11 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
             let allCoordinates: RoutePoint[] = [];
             let allSteps: NavigationStep[] = [];
             let allWaypoints: Waypoint[] = [];
+            const segmentInfos: SegmentInfo[] = data.segments.map((s: any) => ({
+                name: s.name ?? null,
+                estimatedDeparture: s.estimatedDeparture ?? null,
+                breakDuration: s.breakDuration ?? null,
+            }));
 
             for (let i = 0; i < data.segments.length; i++) {
                 const segment = data.segments[i];
@@ -84,14 +96,15 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                 totalDuration: totalDurationMin,
                 tourId,
                 waypoints: allWaypoints.length > 0 ? allWaypoints : null,
+                segments: segmentInfos.length > 0 ? segmentInfos : null,
             };
         }
 
         console.error('[API] fetchRouteByCode: format invalide ou aucun segment');
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'invalid_format' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, segments: null, error: 'invalid_format' };
     } catch (error) {
         console.error('[API] fetchRouteByCode erreur réseau:', error);
-        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, error: 'network' };
+        return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, segments: null, error: 'network' };
     }
 };
 
@@ -114,10 +127,15 @@ export const fetchRouteFromOSRM = async (start: RoutePoint, end: RoutePoint): Pr
     }
 };
 
+export interface RouteToStartResult {
+    coordinates: RoutePoint[];
+    steps: any[];
+}
+
 export const fetchRouteToStart = async (
     tourId: number,
     userLocation: RoutePoint
-): Promise<RoutePoint[] | null> => {
+): Promise<RouteToStartResult | null> => {
     try {
         const url = `${API_BASE_URL}/tours/${tourId}/route-to-start`;
         const response = await fetch(url, {
@@ -141,14 +159,86 @@ export const fetchRouteToStart = async (
         const geometryObject = JSON.parse(data.geometry);
 
         if (geometryObject.coordinates && Array.isArray(geometryObject.coordinates)) {
-            return geometryObject.coordinates.map((coord: [number, number]) => ({
+            const coordinates = geometryObject.coordinates.map((coord: [number, number]) => ({
                 latitude: coord[1],
                 longitude: coord[0],
             }));
+
+            let steps: any[] = [];
+            try {
+                if (data.steps) {
+                    steps = typeof data.steps === 'string' ? JSON.parse(data.steps) : data.steps;
+                }
+            } catch {
+                // steps non parsables, on continue sans
+            }
+
+            return { coordinates, steps };
         }
         return null;
     } catch (error) {
         console.error('[API] fetchRouteToStart erreur réseau:', error);
+        return null;
+    }
+};
+
+export const fetchRouteRedirect = async (
+    code: string,
+    userLocation: RoutePoint,
+    lastReachedWaypointIndex: number
+): Promise<RoutePoint[] | null> => {
+    try {
+        const url = `${API_BASE_URL}/tours/share/${code}/redirect`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
+                lastReachedWaypointIndex,
+            }),
+        });
+
+        if (!response.ok) {
+            const body = await response.text();
+            console.error('[API] fetchRouteRedirect erreur:', response.status, body);
+            return null;
+        }
+
+        const data = await response.json();
+
+        // Réponse avec segments
+        if (data.segments && Array.isArray(data.segments) && data.segments.length > 0) {
+            let allCoordinates: RoutePoint[] = [];
+            for (let i = 0; i < data.segments.length; i++) {
+                const segment = data.segments[i];
+                const geometryObject = JSON.parse(segment.geometry);
+                if (geometryObject.coordinates && Array.isArray(geometryObject.coordinates)) {
+                    const coords = geometryObject.coordinates.map(
+                        (coord: [number, number]) => ({ latitude: coord[1], longitude: coord[0] })
+                    );
+                    if (i > 0 && coords.length > 0) coords.shift();
+                    allCoordinates = allCoordinates.concat(coords);
+                }
+            }
+            return allCoordinates.length > 0 ? allCoordinates : null;
+        }
+
+        // Réponse avec geometry directe
+        if (data.geometry) {
+            const geometryObject = typeof data.geometry === 'string' ? JSON.parse(data.geometry) : data.geometry;
+            if (geometryObject.coordinates && Array.isArray(geometryObject.coordinates)) {
+                return geometryObject.coordinates.map((coord: [number, number]) => ({
+                    latitude: coord[1],
+                    longitude: coord[0],
+                }));
+            }
+        }
+
+        console.error('[API] fetchRouteRedirect: format de réponse non reconnu');
+        return null;
+    } catch (error) {
+        console.error('[API] fetchRouteRedirect erreur réseau:', error);
         return null;
     }
 };

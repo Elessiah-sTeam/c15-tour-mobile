@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, TouchableOpacity, Text } from "react-native";
+import { View, TouchableOpacity, Text, ScrollView, StyleSheet, Animated } from "react-native";
 import MapView, { Marker, Polyline, UrlTile, Region } from "react-native-maps";
 import * as Location from "expo-location";
 import { useLocalSearchParams, router } from "expo-router";
@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 // Imports
 import { mapStyles } from "@/styles/MapStyles";
-import { fetchRouteFromOSRM, sendOrganiserPosition, subscribeToOrganiserPosition } from "@/services/osrmService";
+import { sendOrganiserPosition, subscribeToOrganiserPosition, fetchRouteRedirect } from "@/services/osrmService";
 import {
     RoutePoint,
     NavigationInstruction as NavigationInstructionType,
@@ -29,7 +29,7 @@ import { AudioRecordButton } from "@/components/AudioRecordButton";
 import { AudioNotificationBanner } from "@/components/AudioNotificationBanner";
 import { AudioHistoryModal, StoredAudioMessage } from "@/components/AudioHistoryModal";
 import { fetchAudioMessages, downloadAudioFile } from "@/services/audioService";
-import { Waypoint } from "@/services/osrmService";
+import { Waypoint, SegmentInfo } from "@/services/osrmService";
 import { Audio } from "expo-av";
 
 interface NavigationStatsInterface {
@@ -96,48 +96,48 @@ const computeTurnOverlays = (steps: any[], routePoints: RoutePoint[]): TurnOverl
     return overlays;
 };
 
+// Détecte les virages géométriquement depuis des coordonnées brutes (sans steps)
+const GEOMETRIC_TURN_THRESHOLD_DEG = 25;
+const MIN_POINTS_BETWEEN_TURNS = 3;
 
-// Flèches simples espacées régulièrement pour le trajet vers le départ
-const ARROW_SPACING_METERS = 40;
+const computeGeometricTurnOverlays = (points: RoutePoint[]): TurnOverlay[] => {
+    if (points.length < 4) return [];
+    const overlays: TurnOverlay[] = [];
+    let lastTurnIdx = -MIN_POINTS_BETWEEN_TURNS;
 
-interface SimpleArrow {
-    coordinate: RoutePoint;
-    bearing: number;
-}
+    for (let i = 2; i < points.length - 2; i++) {
+        if (i - lastTurnIdx < MIN_POINTS_BETWEEN_TURNS) continue;
 
-const computeSimpleArrows = (points: RoutePoint[]): SimpleArrow[] => {
-    if (points.length < 2) return [];
-    const arrows: SimpleArrow[] = [];
-    let accumulated = 0;
-    let nextAt = ARROW_SPACING_METERS;
+        const bearingIn  = calculateBearing(points[i-1].latitude, points[i-1].longitude, points[i].latitude, points[i].longitude);
+        const bearingOut = calculateBearing(points[i].latitude,   points[i].longitude,   points[i+1].latitude, points[i+1].longitude);
 
-    for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        const segMeters = calculateDistance(p1.latitude, p1.longitude, p2.latitude, p2.longitude) * 1000;
-        const bearing = calculateBearing(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
+        let diff = Math.abs(bearingOut - bearingIn);
+        if (diff > 180) diff = 360 - diff;
 
-        while (accumulated + segMeters >= nextAt) {
-            const fraction = (nextAt - accumulated) / segMeters;
-            arrows.push({
-                coordinate: {
-                    latitude: p1.latitude + fraction * (p2.latitude - p1.latitude),
-                    longitude: p1.longitude + fraction * (p2.longitude - p1.longitude),
-                },
-                bearing,
-            });
-            nextAt += ARROW_SPACING_METERS;
+        if (diff >= GEOMETRIC_TURN_THRESHOLD_DEG) {
+            const inSlice  = points.slice(Math.max(0, i - 2), i + 1);
+            const outSlice = points.slice(i, Math.min(points.length, i + 3));
+            const polylineCoords = [...inSlice, ...outSlice.slice(1)];
+
+            const arrowCoordinate = outSlice[Math.min(outSlice.length - 1, 2)];
+            const arrowBearing = (Math.atan2(
+                arrowCoordinate.longitude - points[i].longitude,
+                arrowCoordinate.latitude  - points[i].latitude
+            ) * 180 / Math.PI + 360) % 360;
+
+            overlays.push({ polylineCoords, arrowCoordinate, arrowBearing, maneuverRouteIndex: i });
+            lastTurnIdx = i;
         }
-        accumulated += segMeters;
     }
-    return arrows;
+
+    return overlays;
 };
 
 export default function MapScreen() {
     const mapRef = useRef<MapView | null>(null);
 
     // Récupérer les paramètres transmis par RoutePreviewScreen
-    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart, isOrganiser, organiserToken, routeCode, waypoints } =
+    const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart, routeToStartSteps, isOrganiser, organiserToken, routeCode, waypoints, segments } =
         useLocalSearchParams<{
             coordinates: string;
             steps: string;
@@ -145,10 +145,12 @@ export default function MapScreen() {
             totalDuration: string;
             routeStartIndex: string;
             routeToStart: string;
+            routeToStartSteps: string;
             isOrganiser: string;
             organiserToken: string;
             routeCode: string;
             waypoints: string;
+            segments: string;
         }>();
 
     const parsedIsOrganiser = isOrganiser === "true";
@@ -158,13 +160,45 @@ export default function MapScreen() {
         try { return routeToStart ? JSON.parse(routeToStart) : []; }
         catch { return []; }
     }, [routeToStart]);
-    const routeToStartArrows = useMemo(() => computeSimpleArrows(parsedRouteToStart), [parsedRouteToStart]);
-    const intermediateWaypoints: Waypoint[] = useMemo(() => {
-        try {
-            const all: Waypoint[] = waypoints ? JSON.parse(waypoints) : [];
-            return all.slice(1, -1);
-        } catch { return []; }
+    // Flèche au bout du trajet vers le départ (avant-dernier → dernier point)
+    const routeToStartEndArrow = useMemo(() => {
+        if (parsedRouteToStart.length < 2) return null;
+        const last = parsedRouteToStart[parsedRouteToStart.length - 1];
+        const prev = parsedRouteToStart[parsedRouteToStart.length - 2];
+        return {
+            coordinate: last,
+            bearing: calculateBearing(prev.latitude, prev.longitude, last.latitude, last.longitude),
+        };
+    }, [parsedRouteToStart]);
+
+    const parsedRouteToStartSteps: any[] = useMemo(() => {
+        try { return routeToStartSteps ? JSON.parse(routeToStartSteps) : []; }
+        catch { return []; }
+    }, [routeToStartSteps]);
+
+    // Overlays de virage du trajet vers le départ
+    // Utilise les steps réels si disponibles, sinon détection géométrique
+    const routeToStartTurnOverlays = useMemo(() => {
+        if (parsedRouteToStartSteps.length > 0) {
+            return computeTurnOverlays(parsedRouteToStartSteps, parsedRouteToStart);
+        }
+        return computeGeometricTurnOverlays(parsedRouteToStart);
+    }, [parsedRouteToStartSteps, parsedRouteToStart]);
+
+    const allWaypoints: Waypoint[] = useMemo(() => {
+        try { return waypoints ? JSON.parse(waypoints) : []; }
+        catch { return []; }
     }, [waypoints]);
+
+    const intermediateWaypoints: Waypoint[] = useMemo(
+        () => allWaypoints.slice(1, -1),
+        [allWaypoints]
+    );
+
+    const parsedSegments: SegmentInfo[] = useMemo(() => {
+        try { return segments ? JSON.parse(segments) : []; }
+        catch { return []; }
+    }, [segments]);
 
     // États de base
     const [region, setRegion] = useState<Region | null>(null);
@@ -196,6 +230,19 @@ export default function MapScreen() {
     const [hasReachedStart, setHasReachedStart] = useState(false);
     const [organiserLocation, setOrganiserLocation] = useState<RoutePoint | null>(null);
 
+    // Menu segments
+    const [showSegmentsMenu, setShowSegmentsMenu] = useState(false);
+    const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+    const segmentPanelAnim = useRef(new Animated.Value(270)).current;
+
+    useEffect(() => {
+        Animated.spring(segmentPanelAnim, {
+            toValue: showSegmentsMenu ? 0 : 270,
+            useNativeDriver: true,
+            bounciness: 4,
+        }).start();
+    }, [showSegmentsMenu]);
+
     // Audio messages (participants)
     const [audioMessages, setAudioMessages] = useState<StoredAudioMessage[]>([]);
     const [showAudioNotification, setShowAudioNotification] = useState(false);
@@ -212,6 +259,26 @@ export default function MapScreen() {
     const SMOOTHING_FACTOR = 0.15;
     // Ref pour accéder à userLocation dans l'interval sans le redémarrer à chaque update GPS
     const userLocationRef = useRef<RoutePoint | null>(null);
+    // Index du dernier waypoint atteint (pour le recalcul de route)
+    const lastReachedWaypointRef = useRef<number>(0);
+    // Indices des waypoints sur le tableau route (mis à jour quand route ou waypoints changent)
+    const waypointRouteIndicesRef = useRef<number[]>([]);
+
+    // Recalculer les indices des waypoints sur le tableau route à chaque changement de route
+    useEffect(() => {
+        if (allWaypoints.length === 0 || route.length === 0) {
+            waypointRouteIndicesRef.current = [];
+            return;
+        }
+        waypointRouteIndicesRef.current = allWaypoints.map(wp => {
+            let minDist = Infinity, idx = 0;
+            route.forEach((p, i) => {
+                const d = Math.abs(p.latitude - wp.latitude) + Math.abs(p.longitude - wp.longitude);
+                if (d < minDist) { minDist = d; idx = i; }
+            });
+            return idx;
+        });
+    }, [route, allWaypoints]);
 
     // Overlays de virage
     const turnOverlays = useMemo(() => computeTurnOverlays(navigationSteps, route), [navigationSteps, route]);
@@ -221,26 +288,17 @@ export default function MapScreen() {
         return turnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
     }, [turnOverlays, currentRouteIndex]);
 
-    // Récupérer le trajet depuis OSRM (pour recalcul)
-    const fetchRouteFromOSRMForRecalc = async (start: RoutePoint, end: RoutePoint): Promise<boolean> => {
-        const coords = await fetchRouteFromOSRM(start, end);
-        if (coords) {
+    // Recalculer le trajet via l'API redirect
+    const recalculateRoute = async (currentPos: RoutePoint) => {
+        if (isRecalculating || !routeCode) return;
+        setIsRecalculating(true);
+        const coords = await fetchRouteRedirect(routeCode, currentPos, lastReachedWaypointRef.current);
+        setIsRecalculating(false);
+        if (coords && coords.length > 0) {
             setRoute(coords);
             setNavigationSteps([]);
             setManeuverPoints([]);
             setNextInstruction(null);
-            return true;
-        }
-        return false;
-    };
-
-    // Recalculer le trajet
-    const recalculateRoute = async (currentPos: RoutePoint) => {
-        if (isRecalculating || !destination) return;
-        setIsRecalculating(true);
-        const success = await fetchRouteFromOSRMForRecalc(currentPos, destination);
-        setIsRecalculating(false);
-        if (success) {
             setIsOffRoute(false);
         }
     };
@@ -474,7 +532,16 @@ export default function MapScreen() {
                     const closestIndex = findClosestRoutePoint(newPosition, route);
                     setCurrentRouteIndex(closestIndex);
 
-
+                    // Mettre à jour le segment courant pour le menu
+                    const wpIndices = waypointRouteIndicesRef.current;
+                    if (wpIndices.length > 0) {
+                        let segIdx = 0;
+                        for (let w = 0; w < wpIndices.length - 1; w++) {
+                            if (closestIndex >= wpIndices[w]) segIdx = w;
+                        }
+                        setCurrentSegmentIndex(segIdx);
+                        lastReachedWaypointRef.current = segIdx;
+                    }
 
                     const distanceLeft = calculateRemainingDistance(newPosition, route, closestIndex);
                     const avgSpeed = updateAverageSpeed(speedKmh);
@@ -592,17 +659,41 @@ export default function MapScreen() {
                         />
 
                         {/* Flèches trajet vers le départ */}
-                        {!hasReachedStart && parsedRouteStartIndex > 0 && routeToStartArrows.map((arrow, index) => (
-                            <Marker
-                                key={`to-start-arrow-${index}`}
-                                coordinate={arrow.coordinate}
-                                anchor={{ x: 0.5, y: 0.5 }}
-                                rotation={arrow.bearing}
-                                zIndex={10}
-                                tracksViewChanges={false}
-                                image={require("../assets/arrow_route.png")}
-                            />
-                        ))}
+                        {/* Trajet vers le départ : un polyline blanc par virage + flèche finale */}
+                        {!hasReachedStart && parsedRouteStartIndex > 0 && parsedRouteToStart.length > 0 && (
+                            <React.Fragment>
+                                {routeToStartTurnOverlays.map((overlay, index) => (
+                                    <React.Fragment key={`rts-turn-${index}`}>
+                                        <Polyline
+                                            coordinates={overlay.polylineCoords}
+                                            strokeColor="#FFFFFF"
+                                            strokeWidth={9}
+                                            zIndex={12}
+                                        />
+                                        <Marker
+                                            coordinate={overlay.arrowCoordinate}
+                                            anchor={{ x: 0.5, y: 0.5 }}
+                                            rotation={overlay.arrowBearing}
+                                            flat={true}
+                                            zIndex={13}
+                                            tracksViewChanges={false}
+                                            image={require("../assets/arrow_route.png")}
+                                        />
+                                    </React.Fragment>
+                                ))}
+                                {routeToStartEndArrow && (
+                                    <Marker
+                                        coordinate={routeToStartEndArrow.coordinate}
+                                        anchor={{ x: 0.5, y: 0.5 }}
+                                        rotation={routeToStartEndArrow.bearing}
+                                        flat={true}
+                                        zIndex={11}
+                                        tracksViewChanges={false}
+                                        image={require("../assets/arrow_route.png")}
+                                    />
+                                )}
+                            </React.Fragment>
+                        )}
 
                         {/* Prochain virage du trajet principal */}
                         {hasReachedStart && nextTurnOverlay && (
@@ -670,6 +761,69 @@ export default function MapScreen() {
             </MapView>
 
             <NavigationInstruction instruction={nextInstruction} />
+
+            {/* Menu segments — panneau latéral droit */}
+            {parsedSegments.length > 0 && (
+                <>
+                    {/* Onglet de déclenchement */}
+                    <TouchableOpacity
+                        style={segmentStyles.tab}
+                        onPress={() => setShowSegmentsMenu(v => !v)}
+                    >
+                        <Ionicons
+                            name={showSegmentsMenu ? 'chevron-forward' : 'chevron-back'}
+                            size={16}
+                            color="white"
+                        />
+                        <Text style={segmentStyles.tabCount}>
+                            {parsedSegments.length - currentSegmentIndex}
+                        </Text>
+                        <Ionicons name="flag" size={14} color="white" />
+                    </TouchableOpacity>
+
+                    {/* Panneau glissant */}
+                    <Animated.View
+                        style={[
+                            segmentStyles.panel,
+                            { transform: [{ translateX: segmentPanelAnim }] },
+                        ]}
+                    >
+                        <Text style={segmentStyles.panelTitle}>
+                            Étapes ({parsedSegments.length - currentSegmentIndex} restantes)
+                        </Text>
+                        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                            {parsedSegments.slice(currentSegmentIndex).map((seg, idx) => {
+                                const absIdx = currentSegmentIndex + idx;
+                                const isCurrent = absIdx === currentSegmentIndex;
+                                const departureStr = seg.estimatedDeparture
+                                    ? (() => {
+                                        const d = new Date(seg.estimatedDeparture);
+                                        return isNaN(d.getTime())
+                                            ? seg.estimatedDeparture
+                                            : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                                    })()
+                                    : null;
+                                const breakStr = seg.breakDuration != null
+                                    ? `Pause : ${seg.breakDuration} min`
+                                    : null;
+                                return (
+                                    <View key={absIdx} style={[segmentStyles.item, isCurrent && segmentStyles.itemCurrent]}>
+                                        <Text style={segmentStyles.segName} numberOfLines={2}>
+                                            {isCurrent ? '▶ ' : `${absIdx + 1}. `}{seg.name ?? `Segment ${absIdx + 1}`}
+                                        </Text>
+                                        {departureStr && (
+                                            <Text style={segmentStyles.segDetail}>🕐 {departureStr}</Text>
+                                        )}
+                                        {breakStr && (
+                                            <Text style={segmentStyles.segDetail}>⏸ {breakStr}</Text>
+                                        )}
+                                    </View>
+                                );
+                            })}
+                        </ScrollView>
+                    </Animated.View>
+                </>
+            )}
 
             {/* Bouton "Je suis au départ" au-dessus des métriques */}
             {!hasReachedStart && parsedRouteStartIndex > 0 && (
@@ -805,3 +959,71 @@ export default function MapScreen() {
         </View>
     );
 }
+
+const segmentStyles = StyleSheet.create({
+    // Onglet visible sur le bord droit
+    tab: {
+        position: 'absolute',
+        right: 0,
+        top: '40%',
+        backgroundColor: 'rgba(30, 30, 30, 0.90)',
+        borderTopLeftRadius: 10,
+        borderBottomLeftRadius: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 8,
+        alignItems: 'center',
+        gap: 6,
+        zIndex: 101,
+        elevation: 6,
+    },
+    tabCount: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 13,
+    },
+    // Panneau latéral glissant
+    panel: {
+        position: 'absolute',
+        right: 0,
+        top: 100,
+        bottom: 100,
+        width: 260,
+        backgroundColor: 'rgba(18, 18, 18, 0.95)',
+        borderTopLeftRadius: 16,
+        borderBottomLeftRadius: 16,
+        paddingTop: 14,
+        paddingBottom: 10,
+        zIndex: 100,
+        elevation: 8,
+    },
+    panelTitle: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 13,
+        paddingHorizontal: 14,
+        marginBottom: 8,
+        opacity: 0.7,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    item: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.10)',
+    },
+    itemCurrent: {
+        backgroundColor: 'rgba(187, 72, 124, 0.30)',
+    },
+    segName: {
+        color: 'white',
+        fontSize: 13,
+        fontWeight: '600',
+        marginBottom: 3,
+    },
+    segDetail: {
+        color: '#aaa',
+        fontSize: 12,
+        marginTop: 2,
+    },
+});

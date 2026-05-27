@@ -5,12 +5,12 @@ import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { RoutePoint } from "@/utils/navigationUtils";
-import { fetchRouteToStart, Waypoint } from "@/services/osrmService";
+import { fetchRouteToStart, RouteToStartResult, Waypoint } from "@/services/osrmService";
 
 export default function RoutePreviewScreen() {
     const mapRef = useRef<MapView | null>(null);
 
-    const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration, isOrganiser, organiserToken, waypoints } =
+    const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration, isOrganiser, organiserToken, waypoints, segments } =
         useLocalSearchParams<{
             routeCode: string;
             tourId: string;
@@ -21,6 +21,7 @@ export default function RoutePreviewScreen() {
             isOrganiser: string;
             organiserToken: string;
             waypoints: string;
+            segments: string;
         }>();
 
     const route: RoutePoint[] = JSON.parse(coordinates ?? "[]");
@@ -77,8 +78,10 @@ export default function RoutePreviewScreen() {
                     totalDistance,
                     totalDuration,
                     waypoints: waypoints ?? "[]",
+                    segments: segments ?? "[]",
                     routeStartIndex: "0",
                     routeToStart: "[]",
+                    routeToStartSteps: "[]",
                     isOrganiser: isOrganiser ?? "false",
                     organiserToken: organiserToken ?? "",
                     routeCode: routeCode ?? "",
@@ -89,15 +92,18 @@ export default function RoutePreviewScreen() {
 
         setIsLoadingStart(true);
 
-        const routeToStart = await fetchRouteToStart(parsedTourId, userLocation);
+        const routeToStartResult: RouteToStartResult | null = await fetchRouteToStart(parsedTourId, userLocation);
 
         setIsLoadingStart(false);
 
+        const routeToStartCoords = routeToStartResult?.coordinates ?? [];
+        const routeToStartSteps = routeToStartResult?.steps ?? [];
+
         let finalCoordinates: RoutePoint[];
 
-        if (routeToStart && routeToStart.length > 0) {
+        if (routeToStartCoords.length > 0) {
             // Concaténer : trajet jusqu'au départ + trajet principal (sans doublon)
-            finalCoordinates = [...routeToStart, ...route.slice(1)];
+            finalCoordinates = [...routeToStartCoords, ...route.slice(1)];
         } else {
             // Pas de trajet vers le départ, partir directement depuis le trajet principal
             finalCoordinates = route;
@@ -112,11 +118,15 @@ export default function RoutePreviewScreen() {
                 totalDistance,
                 totalDuration,
                 waypoints: waypoints ?? "[]",
-                routeStartIndex: routeToStart && routeToStart.length > 0
-                    ? String(routeToStart.length - 1)
+                segments: segments ?? "[]",
+                routeStartIndex: routeToStartCoords.length > 0
+                    ? String(routeToStartCoords.length - 1)
                     : "0",
-                routeToStart: routeToStart && routeToStart.length > 0
-                    ? JSON.stringify(routeToStart)
+                routeToStart: routeToStartCoords.length > 0
+                    ? JSON.stringify(routeToStartCoords)
+                    : "[]",
+                routeToStartSteps: routeToStartSteps.length > 0
+                    ? JSON.stringify(routeToStartSteps)
                     : "[]",
                 isOrganiser: isOrganiser ?? "false",
                 organiserToken: organiserToken ?? "",
