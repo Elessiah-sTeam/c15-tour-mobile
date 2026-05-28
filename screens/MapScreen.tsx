@@ -283,10 +283,15 @@ export default function MapScreen() {
     // Overlays de virage
     const turnOverlays = useMemo(() => computeTurnOverlays(navigationSteps, route), [navigationSteps, route]);
 
-    // Prochain virage devant l'utilisateur
+    // Prochain virage devant l'utilisateur (trajet principal)
     const nextTurnOverlay = useMemo(() => {
         return turnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
     }, [turnOverlays, currentRouteIndex]);
+
+    // Prochain virage devant l'utilisateur (trajet vers le départ)
+    const nextRouteToStartTurnOverlay = useMemo(() => {
+        return routeToStartTurnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
+    }, [routeToStartTurnOverlays, currentRouteIndex]);
 
     // Recalculer le trajet via l'API
     const recalculateRoute = async (currentPos: RoutePoint) => {
@@ -666,25 +671,25 @@ export default function MapScreen() {
                         {/* Trajet vers le départ : un polyline blanc par virage + flèche finale */}
                         {!hasReachedStart && parsedRouteStartIndex > 0 && parsedRouteToStart.length > 0 && (
                             <React.Fragment>
-                                {routeToStartTurnOverlays.map((overlay, index) => (
-                                    <React.Fragment key={`rts-turn-${index}`}>
+                                {nextRouteToStartTurnOverlay && (
+                                    <React.Fragment>
                                         <Polyline
-                                            coordinates={overlay.polylineCoords}
+                                            coordinates={nextRouteToStartTurnOverlay.polylineCoords}
                                             strokeColor="#FFFFFF"
                                             strokeWidth={9}
                                             zIndex={12}
                                         />
                                         <Marker
-                                            coordinate={overlay.arrowCoordinate}
+                                            coordinate={nextRouteToStartTurnOverlay.arrowCoordinate}
                                             anchor={{ x: 0.5, y: 0.5 }}
-                                            rotation={overlay.arrowBearing}
+                                            rotation={nextRouteToStartTurnOverlay.arrowBearing}
                                             flat={true}
                                             zIndex={13}
                                             tracksViewChanges={false}
                                             image={require("../assets/arrow_route.png")}
                                         />
                                     </React.Fragment>
-                                ))}
+                                )}
                                 {routeToStartEndArrow && (
                                     <Marker
                                         coordinate={routeToStartEndArrow.coordinate}
