@@ -288,16 +288,24 @@ export default function MapScreen() {
         return turnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
     }, [turnOverlays, currentRouteIndex]);
 
-    // Recalculer le trajet via l'API redirect
+    // Recalculer le trajet via l'API
     const recalculateRoute = async (currentPos: RoutePoint) => {
         if (isRecalculating || !routeCode) return;
         setIsRecalculating(true);
-        const coords = await fetchRouteRedirect(routeCode, currentPos, lastReachedWaypointRef.current);
+        const result = await fetchRouteRedirect(
+            routeCode,
+            currentPos,
+            lastReachedWaypointRef.current
+        );
         setIsRecalculating(false);
-        if (coords && coords.length > 0) {
-            setRoute(coords);
-            setNavigationSteps([]);
-            setManeuverPoints([]);
+        if (result && result.coordinates.length > 0) {
+            setRoute(result.coordinates);
+            setNavigationSteps(result.steps);
+            if (result.steps.length > 0) {
+                setManeuverPoints(extractManeuverPoints(result.steps));
+            } else {
+                setManeuverPoints([]);
+            }
             setNextInstruction(null);
             setIsOffRoute(false);
         }
@@ -532,15 +540,11 @@ export default function MapScreen() {
                     const closestIndex = findClosestRoutePoint(newPosition, route);
                     setCurrentRouteIndex(closestIndex);
 
-                    // Mettre à jour le segment courant pour le menu
-                    const wpIndices = waypointRouteIndicesRef.current;
-                    if (wpIndices.length > 0) {
-                        let segIdx = 0;
-                        for (let w = 0; w < wpIndices.length - 1; w++) {
-                            if (closestIndex >= wpIndices[w]) segIdx = w;
-                        }
-                        setCurrentSegmentIndex(segIdx);
-                        lastReachedWaypointRef.current = segIdx;
+                    // Mettre à jour le dernier waypoint atteint
+                    const indices = waypointRouteIndicesRef.current;
+                    const nextWpIdx = lastReachedWaypointRef.current + 1;
+                    if (indices.length > 0 && nextWpIdx < indices.length && closestIndex >= indices[nextWpIdx]) {
+                        lastReachedWaypointRef.current = nextWpIdx;
                     }
 
                     const distanceLeft = calculateRemainingDistance(newPosition, route, closestIndex);
