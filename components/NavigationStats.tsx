@@ -47,8 +47,12 @@ export const NavigationStats: React.FC<NavigationStatsProps> = ({
 
                 <View style={mapStyles.statBox}>
                     <Text style={mapStyles.statLabel}>Arrivée</Text>
-                    <Text style={mapStyles.statValue}>{estimatedTime}</Text>
-                    <Text style={mapStyles.statUnit}>min</Text>
+                    <Text style={mapStyles.statValue}>
+                        {(() => {
+                            const arrival = new Date(Date.now() + estimatedTime * 60 * 1000);
+                            return `${String(arrival.getHours()).padStart(2, '0')}:${String(arrival.getMinutes()).padStart(2, '0')}`;
+                        })()}
+                    </Text>
                 </View>
             </View>
         </View>

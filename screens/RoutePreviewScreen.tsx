@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from "rea
 import MapView, { Polyline, Marker, UrlTile } from "react-native-maps";
 import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { RoutePoint } from "@/utils/navigationUtils";
 import { fetchRouteToStart, RouteToStartResult, Waypoint } from "@/services/osrmService";
@@ -187,6 +188,11 @@ export default function RoutePreviewScreen() {
                 )}
             </MapView>
 
+            {/* Bouton retour */}
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
+
             {/* Panneau du bas */}
             <View style={styles.bottomPanel}>
                 <View style={styles.statsRow}>
@@ -223,6 +229,23 @@ const styles = StyleSheet.create({
     },
     map: {
         flex: 1,
+    },
+    backButton: {
+        position: "absolute",
+        top: 50,
+        left: 15,
+        backgroundColor: "#BB487C",
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: "center",
+        alignItems: "center",
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+        zIndex: 1000,
     },
     bottomPanel: {
         backgroundColor: "#fff",

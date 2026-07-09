@@ -72,6 +72,24 @@ export const mapStyles = StyleSheet.create({
         fontSize: 12,
         color: "#999",
     },
+    // Bouton retour (haut gauche)
+    backButton: {
+        position: "absolute",
+        top: 50,
+        left: 15,
+        backgroundColor: "#BB487C",
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: "center",
+        alignItems: "center",
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+        zIndex: 1000,
+    },
     // Bouton recentrer
     recenterButton: {
         position: "absolute",

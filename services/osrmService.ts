@@ -13,6 +13,7 @@ export interface SegmentInfo {
     name: string | null;
     estimatedDeparture: string | null;
     breakDuration: number | null;
+    waypointNames: string[];
 }
 
 interface FetchRouteResult {
@@ -52,6 +53,9 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
                 name: s.name ?? null,
                 estimatedDeparture: s.estimatedDeparture ?? null,
                 breakDuration: s.breakDuration ?? null,
+                waypointNames: Array.isArray(s.waypoints)
+                    ? s.waypoints.map((wp: any) => wp.name ?? '').filter((n: string) => n.length > 0)
+                    : [],
             }));
 
             for (let i = 0; i < data.segments.length; i++) {
@@ -106,26 +110,7 @@ export const fetchRouteByCode = async (routeCode: string): Promise<FetchRouteRes
         console.error('[API] fetchRouteByCode erreur réseau:', error);
         return { coordinates: null, steps: null, totalDistance: null, totalDuration: null, tourId: null, waypoints: null, segments: null, error: 'network' };
     }
-};
-
-export const fetchRouteFromOSRM = async (start: RoutePoint, end: RoutePoint): Promise<RoutePoint[] | null> => {
-    try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=polyline`;
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if (data.code === "Ok" && data.routes?.length > 0) {
-            return polyline.decode(data.routes[0].geometry).map(
-                (coord: [number, number]) => ({ latitude: coord[0], longitude: coord[1] })
-            );
-        }
-        console.error('[OSRM] Erreur recalcul:', data.message);
-        return null;
-    } catch (error) {
-        console.error('[OSRM] Erreur réseau:', error);
-        return null;
-    }
-};
+}
 
 export interface RouteToStartResult {
     coordinates: RoutePoint[];
@@ -182,11 +167,39 @@ export const fetchRouteToStart = async (
     }
 };
 
+export interface RouteRedirectResult {
+    coordinates: RoutePoint[];
+    steps: any[];
+}
+
+const parseSegmentsCoordinates = (segments: any[]): RoutePoint[] => {
+    let coords: RoutePoint[] = [];
+    for (let i = 0; i < segments.length; i++) {
+        const geo = typeof segments[i].geometry === 'string'
+            ? JSON.parse(segments[i].geometry)
+            : segments[i].geometry;
+        if (geo?.coordinates && Array.isArray(geo.coordinates)) {
+            const segCoords: RoutePoint[] = geo.coordinates.map(
+                (c: [number, number]) => ({ latitude: c[1], longitude: c[0] })
+            );
+            if (i > 0 && segCoords.length > 0) segCoords.shift();
+            coords = coords.concat(segCoords);
+        }
+    }
+    return coords;
+};
+
+const parseStepsArray = (raw: any): any[] => {
+    if (!raw) return [];
+    try { return typeof raw === 'string' ? JSON.parse(raw) : raw; }
+    catch { return []; }
+};
+
 export const fetchRouteRedirect = async (
     code: string,
     userLocation: RoutePoint,
     lastReachedWaypointIndex: number
-): Promise<RoutePoint[] | null> => {
+): Promise<RouteRedirectResult | null> => {
     try {
         const url = `${API_BASE_URL}/tours/share/${code}/redirect`;
         const response = await fetch(url, {
@@ -207,32 +220,42 @@ export const fetchRouteRedirect = async (
 
         const data = await response.json();
 
-        // Réponse avec segments
-        if (data.segments && Array.isArray(data.segments) && data.segments.length > 0) {
-            let allCoordinates: RoutePoint[] = [];
-            for (let i = 0; i < data.segments.length; i++) {
-                const segment = data.segments[i];
-                const geometryObject = JSON.parse(segment.geometry);
-                if (geometryObject.coordinates && Array.isArray(geometryObject.coordinates)) {
-                    const coords = geometryObject.coordinates.map(
-                        (coord: [number, number]) => ({ latitude: coord[1], longitude: coord[0] })
-                    );
-                    if (i > 0 && coords.length > 0) coords.shift();
-                    allCoordinates = allCoordinates.concat(coords);
-                }
-            }
-            return allCoordinates.length > 0 ? allCoordinates : null;
+        // Format { tour: { segments }, route: { geometry, steps } }
+        if (data.tour?.segments && data.route?.geometry) {
+            const approachGeo = typeof data.route.geometry === 'string'
+                ? JSON.parse(data.route.geometry)
+                : data.route.geometry;
+            const approachCoords: RoutePoint[] = (approachGeo?.coordinates ?? []).map(
+                (c: [number, number]) => ({ latitude: c[1], longitude: c[0] })
+            );
+
+            const approachSteps = parseStepsArray(data.route.steps);
+            const tourSteps = data.tour.segments.flatMap((s: any) => parseStepsArray(s.steps));
+            const allSteps = [...approachSteps, ...tourSteps];
+
+            const tourCoords = parseSegmentsCoordinates(data.tour.segments);
+
+            if (approachCoords.length === 0) return tourCoords.length > 0 ? { coordinates: tourCoords, steps: tourSteps } : null;
+            if (tourCoords.length === 0) return approachCoords.length > 0 ? { coordinates: approachCoords, steps: approachSteps } : null;
+
+            const junction = approachCoords[approachCoords.length - 1];
+            let minDist = Infinity, junctionIdx = 0;
+            tourCoords.forEach((p, i) => {
+                const d = Math.abs(p.latitude - junction.latitude) + Math.abs(p.longitude - junction.longitude);
+                if (d < minDist) { minDist = d; junctionIdx = i; }
+            });
+
+            return {
+                coordinates: [...approachCoords, ...tourCoords.slice(junctionIdx + 1)],
+                steps: allSteps,
+            };
         }
 
-        // Réponse avec geometry directe
-        if (data.geometry) {
-            const geometryObject = typeof data.geometry === 'string' ? JSON.parse(data.geometry) : data.geometry;
-            if (geometryObject.coordinates && Array.isArray(geometryObject.coordinates)) {
-                return geometryObject.coordinates.map((coord: [number, number]) => ({
-                    latitude: coord[1],
-                    longitude: coord[0],
-                }));
-            }
+        // Fallback : segments seuls (ancien format)
+        if (data.segments && Array.isArray(data.segments) && data.segments.length > 0) {
+            const coords = parseSegmentsCoordinates(data.segments);
+            const steps = data.segments.flatMap((s: any) => parseStepsArray(s.steps));
+            return coords.length > 0 ? { coordinates: coords, steps } : null;
         }
 
         console.error('[API] fetchRouteRedirect: format de réponse non reconnu');

@@ -233,6 +233,7 @@ export default function MapScreen() {
     // Menu segments
     const [showSegmentsMenu, setShowSegmentsMenu] = useState(false);
     const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+    const [expandedSegmentIdx, setExpandedSegmentIdx] = useState<number | null>(null);
     const segmentPanelAnim = useRef(new Animated.Value(270)).current;
 
     useEffect(() => {
@@ -254,20 +255,27 @@ export default function MapScreen() {
     // Historique et filtres
     const speedHistory = useRef<number[]>([]);
     const MAX_SPEED_HISTORY = 10;
+    const timeHistory = useRef<number[]>([]);
+    const MAX_TIME_HISTORY = 20;
     const previousLocation = useRef<RoutePoint | null>(null);
     const smoothedHeading = useRef<number>(0);
     const SMOOTHING_FACTOR = 0.15;
     // Ref pour accéder à userLocation dans l'interval sans le redémarrer à chaque update GPS
     const userLocationRef = useRef<RoutePoint | null>(null);
+    // Timestamp de la dernière mise à jour GPS valide (pour détecter un GPS figé)
+    const lastGpsUpdateRef = useRef<number>(Date.now());
     // Index du dernier waypoint atteint (pour le recalcul de route)
     const lastReachedWaypointRef = useRef<number>(0);
     // Indices des waypoints sur le tableau route (mis à jour quand route ou waypoints changent)
     const waypointRouteIndicesRef = useRef<number[]>([]);
+    // Indice de départ sur la route pour chaque segment (segment 0 → route[0], etc.)
+    const segmentStartRouteIndicesRef = useRef<number[]>([]);
 
     // Recalculer les indices des waypoints sur le tableau route à chaque changement de route
     useEffect(() => {
         if (allWaypoints.length === 0 || route.length === 0) {
             waypointRouteIndicesRef.current = [];
+            segmentStartRouteIndicesRef.current = [];
             return;
         }
         waypointRouteIndicesRef.current = allWaypoints.map(wp => {
@@ -278,7 +286,30 @@ export default function MapScreen() {
             });
             return idx;
         });
+
+        // Calculer l'indice de début sur la route pour chaque segment
+        // Segment 0 commence au waypoint 0, segment s>0 commence là où le précédent finit
+        let wpCursor = 0;
+        segmentStartRouteIndicesRef.current = parsedSegments.map((seg, s) => {
+            const startRouteIdx = waypointRouteIndicesRef.current[wpCursor] ?? 0;
+            const segWpCount = s === 0
+                ? (seg.waypointNames?.length ?? 1)
+                : Math.max(1, (seg.waypointNames?.length ?? 1) - 1);
+            wpCursor += segWpCount;
+            return startRouteIdx;
+        });
     }, [route, allWaypoints]);
+
+    // Coordonnée du point de départ du parcours (premier waypoint, sinon début du trajet principal)
+    const departureCoordinate: RoutePoint | null = useMemo(() => {
+        if (allWaypoints.length > 0) {
+            return { latitude: allWaypoints[0].latitude, longitude: allWaypoints[0].longitude };
+        }
+        if (route.length > 0) {
+            return route[Math.min(parsedRouteStartIndex, route.length - 1)];
+        }
+        return null;
+    }, [allWaypoints, route, parsedRouteStartIndex]);
 
     // Overlays de virage
     const turnOverlays = useMemo(() => computeTurnOverlays(navigationSteps, route), [navigationSteps, route]);
@@ -292,12 +323,12 @@ export default function MapScreen() {
     const recalculateRoute = async (currentPos: RoutePoint) => {
         if (isRecalculating || !routeCode) return;
         setIsRecalculating(true);
-        const coords = await fetchRouteRedirect(routeCode, currentPos, lastReachedWaypointRef.current);
+        const result = await fetchRouteRedirect(routeCode, currentPos, lastReachedWaypointRef.current);
         setIsRecalculating(false);
-        if (coords && coords.length > 0) {
-            setRoute(coords);
-            setNavigationSteps([]);
-            setManeuverPoints([]);
+        if (result && result.coordinates.length > 0) {
+            setRoute(result.coordinates);
+            setNavigationSteps(result.steps);
+            setManeuverPoints(result.steps.length > 0 ? extractManeuverPoints(result.steps) : []);
             setNextInstruction(null);
             setIsOffRoute(false);
         }
@@ -311,6 +342,16 @@ export default function MapScreen() {
         }
         const sum = speedHistory.current.reduce((acc, speed) => acc + speed, 0);
         return speedHistory.current.length > 0 ? sum / speedHistory.current.length : 0;
+    };
+
+    // Lisser le temps estimé sur les 20 dernières valeurs pour éviter les sauts
+    const smoothEstimatedTime = (rawTime: number): number => {
+        timeHistory.current.push(rawTime);
+        if (timeHistory.current.length > MAX_TIME_HISTORY) {
+            timeHistory.current.shift();
+        }
+        const sum = timeHistory.current.reduce((acc, t) => acc + t, 0);
+        return sum / timeHistory.current.length;
     };
 
 
@@ -336,6 +377,16 @@ export default function MapScreen() {
             playNextAudio();
         }
     };
+
+    // Remettre la vitesse à 0 si le GPS ne répond plus depuis 3 secondes
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (Date.now() - lastGpsUpdateRef.current > 3000) {
+                setNavigationStats(prev => ({ ...prev, speed: 0 }));
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Participant : polling audio toutes les 2s
     useEffect(() => {
@@ -504,10 +555,27 @@ export default function MapScreen() {
 
                     if (previousLocation.current && !isValidGPSPosition(newPosition, previousLocation.current, 200)) return;
 
+                    // Temps écoulé depuis la dernière position GPS valide
+                    const nowMs = Date.now();
+                    const dtMs = nowMs - lastGpsUpdateRef.current;
+                    lastGpsUpdateRef.current = nowMs;
+
+                    // Distance réellement parcourue depuis la dernière position (km)
+                    const movedKm = previousLocation.current
+                        ? calculateDistance(
+                            previousLocation.current.latitude,
+                            previousLocation.current.longitude,
+                            newPosition.latitude,
+                            newPosition.longitude
+                        )
+                        : 0;
+                    // Considéré immobile si déplacement < 2 m (protège contre le bruit GPS et un faux GPS figé)
+                    const hasMoved = movedKm > 0.002;
+
                     setUserLocation(newPosition);
                     userLocationRef.current = newPosition;
 
-                    if (previousLocation.current && currentSpeedMps && currentSpeedMps > 0.5) {
+                    if (previousLocation.current && hasMoved) {
                         setIsMoving(true);
                         const movementHeading = calculateBearing(
                             previousLocation.current.latitude,
@@ -528,25 +596,37 @@ export default function MapScreen() {
                     }
                     previousLocation.current = newPosition;
 
-                    const speedKmh = currentSpeedMps ? currentSpeedMps * 3.6 : 0;
+                    // Vitesse : privilégier la valeur GPS native si fiable, sinon la calculer depuis le déplacement réel.
+                    // Toujours 0 si on n'a pas bougé, ce qui évite les vitesses fantômes à l'arrêt.
+                    const gpsSpeedKmh = currentSpeedMps && currentSpeedMps > 0.5 ? currentSpeedMps * 3.6 : 0;
+                    const computedSpeedKmh = dtMs > 0 && dtMs < 10000 ? movedKm / (dtMs / 3_600_000) : 0;
+                    const speedKmh = hasMoved ? (gpsSpeedKmh > 0 ? gpsSpeedKmh : computedSpeedKmh) : 0;
                     const closestIndex = findClosestRoutePoint(newPosition, route);
                     setCurrentRouteIndex(closestIndex);
 
                     // Mettre à jour le segment courant pour le menu
+                    const segStarts = segmentStartRouteIndicesRef.current;
                     const wpIndices = waypointRouteIndicesRef.current;
-                    if (wpIndices.length > 0) {
+                    if (segStarts.length > 0) {
                         let segIdx = 0;
-                        for (let w = 0; w < wpIndices.length - 1; w++) {
-                            if (closestIndex >= wpIndices[w]) segIdx = w;
+                        for (let s = 0; s < segStarts.length; s++) {
+                            if (closestIndex >= segStarts[s]) segIdx = s;
                         }
                         setCurrentSegmentIndex(segIdx);
-                        lastReachedWaypointRef.current = segIdx;
+                    }
+                    if (wpIndices.length > 0) {
+                        let waypointIdx = 0;
+                        for (let w = 0; w < wpIndices.length - 1; w++) {
+                            if (closestIndex >= wpIndices[w]) waypointIdx = w;
+                        }
+                        lastReachedWaypointRef.current = waypointIdx;
                     }
 
                     const distanceLeft = calculateRemainingDistance(newPosition, route, closestIndex);
                     const avgSpeed = updateAverageSpeed(speedKmh);
                     const effectiveSpeed = avgSpeed > 5 ? avgSpeed : 30;
-                    const timeLeft = (distanceLeft / effectiveSpeed) * 60;
+                    const rawTimeLeft = (distanceLeft / effectiveSpeed) * 60;
+                    const timeLeft = smoothEstimatedTime(rawTimeLeft);
 
                     const offRoute = checkIfOffRoute(newPosition, route);
                     if (offRoute && !isOffRoute && !isRecalculating) {
@@ -716,6 +796,16 @@ export default function MapScreen() {
                             </React.Fragment>
                         )}
 
+                        {/* Marqueur de départ du parcours */}
+                        {departureCoordinate && (
+                            <Marker
+                                coordinate={departureCoordinate}
+                                title={allWaypoints[0]?.name ?? "Départ"}
+                                pinColor="green"
+                                zIndex={45}
+                            />
+                        )}
+
                         {/* Étapes intermédiaires */}
                         {intermediateWaypoints.map((wp, index) => (
                             <Marker
@@ -760,6 +850,11 @@ export default function MapScreen() {
                 )}
             </MapView>
 
+            {/* Bouton retour */}
+            <TouchableOpacity style={mapStyles.backButton} onPress={() => router.back()}>
+                <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
+
             <NavigationInstruction instruction={nextInstruction} />
 
             {/* Menu segments — panneau latéral droit */}
@@ -789,12 +884,13 @@ export default function MapScreen() {
                         ]}
                     >
                         <Text style={segmentStyles.panelTitle}>
-                            Étapes ({parsedSegments.length - currentSegmentIndex} restantes)
+                            Segments ({parsedSegments.length - currentSegmentIndex} restants)
                         </Text>
                         <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                            {parsedSegments.slice(currentSegmentIndex).map((seg, idx) => {
-                                const absIdx = currentSegmentIndex + idx;
+                            {parsedSegments.map((seg, absIdx) => {
                                 const isCurrent = absIdx === currentSegmentIndex;
+                                const isPast = absIdx < currentSegmentIndex;
+                                const isExpanded = expandedSegmentIdx === absIdx;
                                 const departureStr = seg.estimatedDeparture
                                     ? (() => {
                                         const d = new Date(seg.estimatedDeparture);
@@ -807,15 +903,47 @@ export default function MapScreen() {
                                     ? `Pause : ${seg.breakDuration} min`
                                     : null;
                                 return (
-                                    <View key={absIdx} style={[segmentStyles.item, isCurrent && segmentStyles.itemCurrent]}>
-                                        <Text style={segmentStyles.segName} numberOfLines={2}>
-                                            {isCurrent ? '▶ ' : `${absIdx + 1}. `}{seg.name ?? `Segment ${absIdx + 1}`}
-                                        </Text>
-                                        {departureStr && (
-                                            <Text style={segmentStyles.segDetail}>🕐 {departureStr}</Text>
-                                        )}
-                                        {breakStr && (
-                                            <Text style={segmentStyles.segDetail}>⏸ {breakStr}</Text>
+                                    <View key={absIdx}>
+                                        <TouchableOpacity
+                                            style={[
+                                                segmentStyles.item,
+                                                isCurrent && segmentStyles.itemCurrent,
+                                                isPast && segmentStyles.itemPast,
+                                            ]}
+                                            onPress={() => setExpandedSegmentIdx(isExpanded ? null : absIdx)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={segmentStyles.segHeader}>
+                                                <Text style={[segmentStyles.segName, isPast && segmentStyles.segNamePast]} numberOfLines={2}>
+                                                    {isPast ? '✓ ' : isCurrent ? '▶ ' : `${absIdx + 1}. `}{seg.name ?? `Segment ${absIdx + 1}`}
+                                                </Text>
+                                                <Ionicons
+                                                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                                    size={14}
+                                                    color="#aaa"
+                                                />
+                                            </View>
+                                            {departureStr && (
+                                                <Text style={segmentStyles.segDetail}>🕐 {departureStr}</Text>
+                                            )}
+                                            {breakStr && (
+                                                <Text style={segmentStyles.segDetail}>⏸ {breakStr}</Text>
+                                            )}
+                                        </TouchableOpacity>
+                                        {isExpanded && (seg.waypointNames?.length ?? 0) > 0 && (
+                                            <View style={segmentStyles.waypointList}>
+                                                {seg.waypointNames.map((name, wIdx) => (
+                                                    <Text
+                                                        key={wIdx}
+                                                        style={[
+                                                            segmentStyles.waypointItem,
+                                                            absIdx < currentSegmentIndex && segmentStyles.waypointItemPassed,
+                                                        ]}
+                                                    >
+                                                        {`${absIdx < currentSegmentIndex ? '✓' : '•'} ${name}`}
+                                                    </Text>
+                                                ))}
+                                            </View>
                                         )}
                                     </View>
                                 );
@@ -1015,15 +1143,43 @@ const segmentStyles = StyleSheet.create({
     itemCurrent: {
         backgroundColor: 'rgba(187, 72, 124, 0.30)',
     },
+    itemPast: {
+        opacity: 0.6,
+    },
+    segHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+    },
     segName: {
         color: 'white',
         fontSize: 13,
         fontWeight: '600',
         marginBottom: 3,
+        flex: 1,
+        marginRight: 6,
+    },
+    segNamePast: {
+        color: '#4CAF50',
     },
     segDetail: {
         color: '#aaa',
         fontSize: 12,
         marginTop: 2,
+    },
+    waypointList: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.10)',
+    },
+    waypointItem: {
+        color: '#ccc',
+        fontSize: 12,
+        paddingVertical: 3,
+    },
+    waypointItemPassed: {
+        color: '#4CAF50',
     },
 });
