@@ -13,9 +13,11 @@
     },
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "com.anonymous.c15tour",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "L'application a besoin du microphone pour enregistrer les messages vocaux du convoi.",
-        "NSCameraUsageDescription": "L'application a besoin de la caméra pour scanner le QR code de l'itinéraire."
+        "NSCameraUsageDescription": "L'application a besoin de la caméra pour scanner le QR code de l'itinéraire.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -44,6 +46,13 @@
         "android.permission.CAMERA"
       ],
       "package": "com.anonymous.c15tour"
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b0d57a03-43ba-4865-8fd6-c848b4590515"
+      }
+    },
+    "owner": "djocaire"
   }
 }
