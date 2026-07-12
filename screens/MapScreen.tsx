@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, TouchableOpacity, Text, ScrollView, StyleSheet, Animated } from "react-native";
-import MapView, { Marker, Polyline, UrlTile, Region } from "react-native-maps";
+import { View, TouchableOpacity, Text, ScrollView, StyleSheet, Animated, Image } from "react-native";
+import { Map as MapView, Camera, GeoJSONSource, Layer, Marker, Images, type CameraRef } from "@maplibre/maplibre-react-native";
 import * as Location from "expo-location";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 // Imports
 import { mapStyles } from "@/styles/MapStyles";
+import { MAP_STYLE_URL, toLngLat, routeToLineString, linesToFeatureCollection } from "@/utils/mapConfig";
 import { sendOrganiserPosition, subscribeToOrganiserPosition, fetchRouteRedirect } from "@/services/osrmService";
 import {
     RoutePoint,
@@ -24,6 +25,7 @@ import {
 } from "@/utils/navigationUtils";
 import { NavigationStats } from "@/components/NavigationStats";
 import { NavigationInstruction } from "@/components/NavigationInstruction";
+import { MapPin } from "@/components/MapPin";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { AudioRecordButton } from "@/components/AudioRecordButton";
 import { AudioNotificationBanner } from "@/components/AudioNotificationBanner";
@@ -39,6 +41,13 @@ interface NavigationStatsInterface {
     averageSpeed: number;
 }
 
+interface MapRegion {
+    latitude: number;
+    longitude: number;
+    latitudeDelta?: number;
+    longitudeDelta?: number;
+}
+
 interface TurnOverlay {
     polylineCoords: RoutePoint[];
     arrowCoordinate: RoutePoint;
@@ -52,6 +61,9 @@ const computeTurnOverlays = (steps: any[], routePoints: RoutePoint[]): TurnOverl
     if (!steps || steps.length < 2 || routePoints.length === 0) return [];
 
     const overlays: TurnOverlay[] = [];
+    // Curseur monotone : chaque virage est cherché en avant du précédent, ce qui garantit
+    // des index croissants et évite qu'un virage soit mappé sur un croisement lointain.
+    let searchCursor = 0;
 
     for (let i = 0; i < steps.length - 1; i++) {
         const step = steps[i];
@@ -74,11 +86,13 @@ const computeTurnOverlays = (steps: any[], routePoints: RoutePoint[]): TurnOverl
         };
 
         let minDist = Infinity;
-        let maneuverRouteIndex = 0;
-        routePoints.forEach((p, idx) => {
+        let maneuverRouteIndex = searchCursor;
+        for (let idx = searchCursor; idx < routePoints.length; idx++) {
+            const p = routePoints[idx];
             const d = Math.abs(p.latitude - maneuverPoint.latitude) + Math.abs(p.longitude - maneuverPoint.longitude);
             if (d < minDist) { minDist = d; maneuverRouteIndex = idx; }
-        });
+        }
+        searchCursor = maneuverRouteIndex;
 
         const inSlice = inCoords.slice(Math.max(0, inCoords.length - 3));
         const outSlice = outCoords.slice(0, Math.min(outCoords.length, 3));
@@ -133,8 +147,34 @@ const computeGeometricTurnOverlays = (points: RoutePoint[]): TurnOverlay[] => {
     return overlays;
 };
 
+// Point de route le plus proche en restant local à la progression courante.
+// Évite les sauts d'index quand le trajet repasse près de lui-même (boucles, aller-retours),
+// ce qui ferait sélectionner un virage bien plus loin que le prochain réel.
+const PROGRESS_WINDOW = 80;
+const findClosestRoutePointProgressive = (
+    pos: RoutePoint,
+    route: RoutePoint[],
+    fromIndex: number
+): number => {
+    if (route.length === 0) return 0;
+    const anchor = Math.min(Math.max(0, fromIndex), route.length - 1);
+    const start = Math.max(0, anchor - 5);
+    const end = Math.min(route.length - 1, anchor + PROGRESS_WINDOW);
+
+    let minD = Infinity;
+    let idx = anchor;
+    for (let i = start; i <= end; i++) {
+        const d = calculateDistance(pos.latitude, pos.longitude, route[i].latitude, route[i].longitude);
+        if (d < minD) { minD = d; idx = i; }
+    }
+
+    // Trop loin de la fenêtre (perte de suivi, gros saut GPS) → recherche globale de secours
+    if (minD > 0.15) return findClosestRoutePoint(pos, route);
+    return idx;
+};
+
 export default function MapScreen() {
-    const mapRef = useRef<MapView | null>(null);
+    const cameraRef = useRef<CameraRef | null>(null);
 
     // Récupérer les paramètres transmis par RoutePreviewScreen
     const { coordinates, steps, totalDistance, totalDuration, routeStartIndex, routeToStart, routeToStartSteps, isOrganiser, organiserToken, routeCode, waypoints, segments } =
@@ -201,7 +241,7 @@ export default function MapScreen() {
     }, [segments]);
 
     // États de base
-    const [region, setRegion] = useState<Region | null>(null);
+    const [region, setRegion] = useState<MapRegion | null>(null);
     const [userLocation, setUserLocation] = useState<RoutePoint | null>(null);
     const [heading, setHeading] = useState(0);
     const [smoothedHeadingState, setSmoothedHeadingState] = useState(0);
@@ -264,12 +304,19 @@ export default function MapScreen() {
     const userLocationRef = useRef<RoutePoint | null>(null);
     // Timestamp de la dernière mise à jour GPS valide (pour détecter un GPS figé)
     const lastGpsUpdateRef = useRef<number>(Date.now());
+    // Index de progression sur le trajet (recherche locale du point le plus proche)
+    const progressIndexRef = useRef<number>(0);
     // Index du dernier waypoint atteint (pour le recalcul de route)
     const lastReachedWaypointRef = useRef<number>(0);
     // Indices des waypoints sur le tableau route (mis à jour quand route ou waypoints changent)
     const waypointRouteIndicesRef = useRef<number[]>([]);
     // Indice de départ sur la route pour chaque segment (segment 0 → route[0], etc.)
     const segmentStartRouteIndicesRef = useRef<number[]>([]);
+
+    // Réinitialiser la progression quand le trajet change (chargement, recalcul)
+    useEffect(() => {
+        progressIndexRef.current = 0;
+    }, [route]);
 
     // Recalculer les indices des waypoints sur le tableau route à chaque changement de route
     useEffect(() => {
@@ -323,6 +370,49 @@ export default function MapScreen() {
     const nextRouteToStartTurnOverlay = useMemo(() => {
         return routeToStartTurnOverlays.find(o => o.maneuverRouteIndex > currentRouteIndex) ?? null;
     }, [routeToStartTurnOverlays, currentRouteIndex]);
+
+    // --- Données géométriques pour MapLibre ---
+    // Trajet principal converti en LineString GeoJSON
+    const routeLine = useMemo(() => routeToLineString(route), [route]);
+
+    // Lignes blanches du prochain virage actif
+    const turnLineFeatures = useMemo(() => {
+        const lines: RoutePoint[][] = [];
+        if (hasReachedStart) {
+            if (nextTurnOverlay) lines.push(nextTurnOverlay.polylineCoords);
+        } else if (parsedRouteStartIndex > 0 && parsedRouteToStart.length > 0) {
+            if (nextRouteToStartTurnOverlay) lines.push(nextRouteToStartTurnOverlay.polylineCoords);
+        }
+        return linesToFeatureCollection(lines);
+    }, [hasReachedStart, nextTurnOverlay, nextRouteToStartTurnOverlay, parsedRouteStartIndex, parsedRouteToStart]);
+
+    // Flèches de virage actives (coordonnée + cap absolu ; la rotation écran est appliquée au rendu)
+    const turnArrows = useMemo(() => {
+        const arrows: { id: string; coordinate: RoutePoint; bearing: number }[] = [];
+        if (hasReachedStart) {
+            if (nextTurnOverlay) {
+                arrows.push({ id: "main-turn", coordinate: nextTurnOverlay.arrowCoordinate, bearing: nextTurnOverlay.arrowBearing });
+            }
+        } else if (parsedRouteStartIndex > 0 && parsedRouteToStart.length > 0) {
+            if (nextRouteToStartTurnOverlay) {
+                arrows.push({ id: "rts-turn", coordinate: nextRouteToStartTurnOverlay.arrowCoordinate, bearing: nextRouteToStartTurnOverlay.arrowBearing });
+            }
+            if (routeToStartEndArrow) {
+                arrows.push({ id: "rts-end", coordinate: routeToStartEndArrow.coordinate, bearing: routeToStartEndArrow.bearing });
+            }
+        }
+        return arrows;
+    }, [hasReachedStart, nextTurnOverlay, nextRouteToStartTurnOverlay, routeToStartEndArrow, parsedRouteStartIndex, parsedRouteToStart]);
+
+    // Flèches de virage en FeatureCollection (rendu par un SymbolLayer aligné sur la carte)
+    const turnArrowFC: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(() => ({
+        type: "FeatureCollection",
+        features: turnArrows.map((a) => ({
+            type: "Feature",
+            properties: { bearing: a.bearing },
+            geometry: { type: "Point", coordinates: toLngLat(a.coordinate) },
+        })),
+    }), [turnArrows]);
 
     // Recalculer le trajet via l'API
     const recalculateRoute = async (currentPos: RoutePoint) => {
@@ -406,28 +496,36 @@ export default function MapScreen() {
             if (messages.length === 0) return;
 
             const maxId = Math.max(...messages.map(m => m.id));
+            const previousMaxId = lastPlayedIdRef.current;
+            // Premier poll : on peuple l'historique existant sans le rejouer automatiquement
+            const isFirstPoll = previousMaxId === null;
 
-            // Premier poll : initialiser sans lire pour éviter de rejouer l'historique
-            if (lastPlayedIdRef.current === null) {
-                lastPlayedIdRef.current = maxId;
-                return;
-            }
+            // Marquer tout de suite pour éviter qu'un poll concurrent retraite les mêmes messages
+            lastPlayedIdRef.current = maxId;
 
-            const newMessages = messages
-                .filter(m => m.id > lastPlayedIdRef.current!)
+            const messagesToProcess = messages
+                .filter(m => isFirstPoll || m.id > previousMaxId!)
                 .sort((a, b) => a.id - b.id);
 
-            for (const msg of newMessages) {
+            for (const msg of messagesToProcess) {
                 const localUri = await downloadAudioFile(msg.url, msg.id);
                 if (!localUri) continue;
 
-                setAudioMessages(prev => [...prev, { id: msg.id, createdAt: msg.createdAt, localUri }]);
-                audioQueueRef.current.push(localUri);
-                setShowAudioNotification(true);
+                // Ajouter à l'historique (en évitant les doublons)
+                setAudioMessages(prev =>
+                    prev.some(m => m.id === msg.id)
+                        ? prev
+                        : [...prev, { id: msg.id, createdAt: msg.createdAt, localUri }]
+                );
+
+                // Les messages déjà présents avant la connexion ne sont pas rejoués ni notifiés
+                if (!isFirstPoll) {
+                    audioQueueRef.current.push(localUri);
+                    setShowAudioNotification(true);
+                }
             }
 
-            if (newMessages.length > 0) {
-                lastPlayedIdRef.current = maxId;
+            if (!isFirstPoll && messagesToProcess.length > 0) {
                 playNextAudio();
             }
         };
@@ -610,7 +708,8 @@ export default function MapScreen() {
                     const gpsSpeedKmh = currentSpeedMps && currentSpeedMps > 0.5 ? currentSpeedMps * 3.6 : 0;
                     const computedSpeedKmh = dtMs > 0 && dtMs < 10000 ? movedKm / (dtMs / 3_600_000) : 0;
                     const speedKmh = hasMoved ? (gpsSpeedKmh > 0 ? gpsSpeedKmh : computedSpeedKmh) : 0;
-                    const closestIndex = findClosestRoutePoint(newPosition, route);
+                    const closestIndex = findClosestRoutePointProgressive(newPosition, route, progressIndexRef.current);
+                    progressIndexRef.current = closestIndex;
                     setCurrentRouteIndex(closestIndex);
 
                     // Mettre à jour le segment courant pour le menu
@@ -662,13 +761,14 @@ export default function MapScreen() {
                     });
 
                     const timeSinceInteraction = Date.now() - lastUserInteraction.current;
-                    if (mapRef.current && timeSinceInteraction > 5000) {
-                        mapRef.current.animateCamera({
-                            center: { latitude, longitude },
+                    if (cameraRef.current && timeSinceInteraction > 5000) {
+                        cameraRef.current.easeTo({
+                            center: [longitude, latitude],
                             zoom: 17,
-                            heading: smoothedHeading.current,
+                            bearing: smoothedHeading.current,
                             pitch: 45,
-                        }, { duration: 300 });
+                            duration: 300,
+                        });
                         setIsMapInteracted(false);
                     }
                 }
@@ -700,15 +800,16 @@ export default function MapScreen() {
                         setHeading(smoothedHeading.current);
                         setSmoothedHeadingState(smoothedHeading.current);
 
-                        if (!isMoving && mapRef.current && userLocation) {
+                        if (!isMoving && cameraRef.current && userLocation) {
                             const timeSinceInteraction = Date.now() - lastUserInteraction.current;
                             if (timeSinceInteraction > 5000) {
-                                mapRef.current.animateCamera({
-                                    center: userLocation,
+                                cameraRef.current.easeTo({
+                                    center: [userLocation.longitude, userLocation.latitude],
                                     zoom: 17,
-                                    heading: smoothedHeading.current,
+                                    bearing: smoothedHeading.current,
                                     pitch: 45,
-                                }, { duration: 300 });
+                                    duration: 300,
+                                });
                                 setIsMapInteracted(false);
                             }
                         }
@@ -730,132 +831,114 @@ export default function MapScreen() {
     return (
         <View style={mapStyles.container}>
             <MapView
-                ref={mapRef}
                 style={mapStyles.map}
-                region={region}
-                showsUserLocation={false}
-                onPanDrag={() => { lastUserInteraction.current = Date.now(); setIsMapInteracted(true); }}
-                onTouchStart={() => { lastUserInteraction.current = Date.now(); setIsMapInteracted(true); }}
+                mapStyle={MAP_STYLE_URL}
+                attributionPosition={{ bottom: 8, left: 8 }}
+                onRegionIsChanging={(e) => {
+                    if (e.nativeEvent.userInteraction) {
+                        lastUserInteraction.current = Date.now();
+                        setIsMapInteracted(true);
+                    }
+                }}
             >
-                <UrlTile urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
+                <Camera
+                    ref={cameraRef}
+                    initialViewState={{ center: [region.longitude, region.latitude], zoom: 16 }}
+                />
+
+                {/* Image utilisée par le SymbolLayer des flèches de virage */}
+                <Images images={{ routeArrow: require("../assets/arrow_route.png") }} />
 
                 {route.length > 0 && (
                     <>
-                        <Polyline
-                            coordinates={route}
-                            strokeColor={isOffRoute ? "orange" : "#BB487C"}
-                            strokeWidth={10}
-                        />
+                        {/* Trajet principal */}
+                        <GeoJSONSource id="route" data={routeLine}>
+                            <Layer
+                                id="route-line"
+                                type="line"
+                                layout={{ "line-cap": "round", "line-join": "round" }}
+                                paint={{ "line-color": isOffRoute ? "#FFA500" : "#BB487C", "line-width": 7 }}
+                            />
+                        </GeoJSONSource>
 
-                        {/* Flèches trajet vers le départ */}
-                        {/* Trajet vers le départ : un polyline blanc par virage + flèche finale */}
-                        {!hasReachedStart && parsedRouteStartIndex > 0 && parsedRouteToStart.length > 0 && (
-                            <React.Fragment>
-                                {nextRouteToStartTurnOverlay && (
-                                    <React.Fragment>
-                                        <Polyline
-                                            coordinates={nextRouteToStartTurnOverlay.polylineCoords}
-                                            strokeColor="#FFFFFF"
-                                            strokeWidth={9}
-                                            zIndex={12}
-                                        />
-                                        <Marker
-                                            coordinate={nextRouteToStartTurnOverlay.arrowCoordinate}
-                                            anchor={{ x: 0.5, y: 0.5 }}
-                                            rotation={nextRouteToStartTurnOverlay.arrowBearing}
-                                            flat={true}
-                                            zIndex={13}
-                                            tracksViewChanges={false}
-                                            image={require("../assets/arrow_route.png")}
-                                        />
-                                    </React.Fragment>
-                                )}
-                                {routeToStartEndArrow && (
-                                    <Marker
-                                        coordinate={routeToStartEndArrow.coordinate}
-                                        anchor={{ x: 0.5, y: 0.5 }}
-                                        rotation={routeToStartEndArrow.bearing}
-                                        flat={true}
-                                        zIndex={11}
-                                        tracksViewChanges={false}
-                                        image={require("../assets/arrow_route.png")}
-                                    />
-                                )}
-                            </React.Fragment>
-                        )}
+                        {/* Ligne blanche du prochain virage */}
+                        <GeoJSONSource id="turn-lines" data={turnLineFeatures}>
+                            <Layer
+                                id="turn-lines-layer"
+                                type="line"
+                                layout={{ "line-cap": "round", "line-join": "round" }}
+                                paint={{ "line-color": "#FFFFFF", "line-width": 6 }}
+                            />
+                        </GeoJSONSource>
 
-                        {/* Prochain virage du trajet principal */}
-                        {hasReachedStart && nextTurnOverlay && (
-                            <React.Fragment>
-                                <Polyline
-                                    coordinates={nextTurnOverlay.polylineCoords}
-                                    strokeColor="#FFFFFF"
-                                    strokeWidth={9}
-                                    zIndex={15}
-                                />
-                                <Marker
-                                    coordinate={nextTurnOverlay.arrowCoordinate}
-                                    anchor={{ x: 0.5, y: 0.5 }}
-                                    rotation={nextTurnOverlay.arrowBearing}
-                                    flat={true}
-                                    zIndex={20}
-                                    tracksViewChanges={false}
-                                    image={require("../assets/arrow_route.png")}
-                                />
-                            </React.Fragment>
-                        )}
+                        {/* Flèches de virage : SymbolLayer aligné sur la carte (rotation native, comme l'ancien marqueur flat) */}
+                        <GeoJSONSource id="turn-arrows-src" data={turnArrowFC}>
+                            <Layer
+                                id="turn-arrows-layer"
+                                type="symbol"
+                                layout={{
+                                    "icon-image": "routeArrow",
+                                    "icon-rotate": ["get", "bearing"],
+                                    "icon-rotation-alignment": "map",
+                                    "icon-size": 0.5,
+                                    "icon-allow-overlap": true,
+                                    "icon-ignore-placement": true,
+                                }}
+                            />
+                        </GeoJSONSource>
 
                         {/* Marqueur de départ du parcours */}
                         {departureCoordinate && (
-                            <Marker
-                                coordinate={departureCoordinate}
-                                title={allWaypoints[0]?.name ?? "Départ"}
-                                pinColor="green"
-                                zIndex={45}
+                            <MapPin
+                                id="depart"
+                                point={departureCoordinate}
+                                color="#2E7D32"
+                                label={allWaypoints[0]?.name ?? "Départ"}
                             />
                         )}
 
                         {/* Étapes intermédiaires */}
                         {intermediateWaypoints.map((wp, index) => (
-                            <Marker
+                            <MapPin
                                 key={`wp-${index}`}
-                                coordinate={{ latitude: wp.latitude, longitude: wp.longitude }}
-                                title={wp.name}
-                                pinColor="orange"
-                                zIndex={40}
+                                id={`wp-${index}`}
+                                point={{ latitude: wp.latitude, longitude: wp.longitude }}
+                                color="#F57C00"
+                                label={wp.name}
+                                size={30}
                             />
                         ))}
 
-                        <Marker
-                            coordinate={route[route.length - 1]}
-                            title="Arrivée"
-                            pinColor="red"
-                            zIndex={50}
+                        {/* Arrivée */}
+                        <MapPin
+                            id="arrivee"
+                            point={route[route.length - 1]}
+                            color="#C62828"
+                            label="Arrivée"
                         />
                     </>
                 )}
 
+                {/* Position utilisateur (flèche orientée ; la carte tourne selon le cap donc flèche vers le haut) */}
                 {userLocation && (
-                    <Marker
-                        coordinate={userLocation}
-                        anchor={{ x: 0.5, y: 0.5 }}
-                        rotation={smoothedHeadingState}
-                        flat
-                        zIndex={1000}
-                        image={require("../assets/fleche.png")}
-                    />
+                    <Marker id="user" lngLat={[userLocation.longitude, userLocation.latitude]} anchor="center">
+                        <Image
+                            source={require("../assets/fleche.png")}
+                            resizeMode="contain"
+                            style={{ width: 40, height: 40 }}
+                        />
+                    </Marker>
                 )}
 
                 {/* Position de l'organisateur (visible par les participants) */}
                 {!parsedIsOrganiser && organiserLocation && (
-                    <Marker
-                        coordinate={organiserLocation}
-                        anchor={{ x: 0.5, y: 0.5 }}
-                        zIndex={900}
-                        title="Organisateur"
-                        flat={true}
-                        image={require("../assets/fleche_organisateur.png")}
-                    />
+                    <Marker id="organiser" lngLat={[organiserLocation.longitude, organiserLocation.latitude]} anchor="center">
+                        <Image
+                            source={require("../assets/fleche_organisateur.png")}
+                            resizeMode="contain"
+                            style={{ width: 36, height: 36 }}
+                        />
+                    </Marker>
                 )}
             </MapView>
 
@@ -1061,12 +1144,13 @@ export default function MapScreen() {
                         if (!userLocation) return;
                         lastUserInteraction.current = 0;
                         setIsMapInteracted(false);
-                        mapRef.current?.animateCamera({
-                            center: userLocation,
+                        cameraRef.current?.easeTo({
+                            center: [userLocation.longitude, userLocation.latitude],
                             pitch: 45,
-                            heading: smoothedHeading.current,
+                            bearing: smoothedHeading.current,
                             zoom: 17,
-                        }, { duration: 500 });
+                            duration: 500,
+                        });
                     }}
                 >
                     <Ionicons name="locate" size={24} color="white" />

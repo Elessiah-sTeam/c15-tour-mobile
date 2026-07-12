@@ -8,8 +8,6 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
 } from "react-native";
 import Modal from "react-native-modal";
@@ -156,11 +154,9 @@ export default function HomeScreen() {
             style={styles.modal}
             swipeDirection="down"
             onSwipeComplete={toggleModal}
+            avoidKeyboard
         >
-          <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={styles.modalContent}
-          >
+          <View style={styles.modalContent}>
             <View style={styles.handle} />
 
             <Text style={styles.modalTitle}>CHARGER UN ITINÉRAIRE</Text>
@@ -208,7 +204,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </>
             )}
-          </KeyboardAvoidingView>
+          </View>
         </Modal>
       </ImageBackground>
   );

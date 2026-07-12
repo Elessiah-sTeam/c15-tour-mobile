@@ -1,15 +1,17 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from "react-native";
-import MapView, { Polyline, Marker, UrlTile } from "react-native-maps";
+import { Map as MapView, Camera, GeoJSONSource, Layer, type CameraRef } from "@maplibre/maplibre-react-native";
 import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { RoutePoint } from "@/utils/navigationUtils";
 import { fetchRouteToStart, RouteToStartResult, Waypoint } from "@/services/osrmService";
+import { MAP_STYLE_URL, routeToLineString, computeBounds } from "@/utils/mapConfig";
+import { MapPin } from "@/components/MapPin";
 
 export default function RoutePreviewScreen() {
-    const mapRef = useRef<MapView | null>(null);
+    const cameraRef = useRef<CameraRef>(null);
 
     const { routeCode, tourId, coordinates, steps, totalDistance, totalDuration, isOrganiser, organiserToken, waypoints, segments } =
         useLocalSearchParams<{
@@ -25,10 +27,12 @@ export default function RoutePreviewScreen() {
             segments: string;
         }>();
 
-    const route: RoutePoint[] = JSON.parse(coordinates ?? "[]");
-    const parsedWaypoints: Waypoint[] = JSON.parse(waypoints ?? "[]");
+    const route: RoutePoint[] = useMemo(() => JSON.parse(coordinates ?? "[]"), [coordinates]);
+    const parsedWaypoints: Waypoint[] = useMemo(() => JSON.parse(waypoints ?? "[]"), [waypoints]);
     // Exclure le premier (départ) et le dernier (arrivée) déjà affichés par les marqueurs vert/rouge
-    const intermediateWaypoints = parsedWaypoints.slice(1, -1);
+    const intermediateWaypoints = useMemo(() => parsedWaypoints.slice(1, -1), [parsedWaypoints]);
+    const routeLine = useMemo(() => routeToLineString(route), [route]);
+    const routeBounds = useMemo(() => computeBounds(route), [route]);
     const parsedTourId = parseInt(tourId ?? "0");
     const parsedDistance = parseFloat(totalDistance ?? "0");
     const parsedDuration = parseFloat(totalDuration ?? "0");
@@ -57,15 +61,15 @@ export default function RoutePreviewScreen() {
         getLocation();
     }, []);
 
-    // Centrer la carte sur le trajet complet une fois la route disponible
-    useEffect(() => {
-        if (route.length > 0 && mapRef.current) {
-            mapRef.current.fitToCoordinates(route, {
-                edgePadding: { top: 60, right: 40, bottom: 160, left: 40 },
-                animated: true,
+    // Centrer la carte sur le trajet complet une fois la carte prête
+    const handleMapReady = () => {
+        if (routeBounds) {
+            cameraRef.current?.fitBounds(routeBounds, {
+                padding: { top: 80, right: 50, bottom: 200, left: 50 },
+                duration: 600,
             });
         }
-    }, [mapRef.current]);
+    };
 
     const handleEnRoute = async () => {
         if (!userLocation) {
@@ -147,43 +151,42 @@ export default function RoutePreviewScreen() {
     return (
         <View style={styles.container}>
             <MapView
-                ref={mapRef}
                 style={styles.map}
-                showsUserLocation={false}
+                mapStyle={MAP_STYLE_URL}
+                onDidFinishLoadingMap={handleMapReady}
+                attributionPosition={{ bottom: 180, left: 8 }}
+                compassPosition={{ top: 60, right: 12 }}
             >
-                <UrlTile
-                    urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    maximumZ={19}
-                />
+                <Camera ref={cameraRef} />
 
                 {route.length > 0 && (
                     <>
-                        <Polyline
-                            coordinates={route}
-                            strokeColor="#BB487C"
-                            strokeWidth={5}
-                        />
+                        <GeoJSONSource id="route" data={routeLine}>
+                            <Layer
+                                id="route-line"
+                                type="line"
+                                layout={{ "line-cap": "round", "line-join": "round" }}
+                                paint={{ "line-color": "#BB487C", "line-width": 5 }}
+                            />
+                        </GeoJSONSource>
+
                         {/* Marqueur de départ */}
-                        <Marker
-                            coordinate={route[0]}
-                            title="Départ"
-                            pinColor="green"
-                        />
+                        <MapPin id="depart" point={route[0]} color="#2E7D32" label="Départ" />
+
                         {/* Étapes intermédiaires */}
                         {intermediateWaypoints.map((wp, index) => (
-                            <Marker
+                            <MapPin
                                 key={`wp-${index}`}
-                                coordinate={{ latitude: wp.latitude, longitude: wp.longitude }}
-                                title={wp.name}
-                                pinColor="orange"
+                                id={`wp-${index}`}
+                                point={{ latitude: wp.latitude, longitude: wp.longitude }}
+                                color="#F57C00"
+                                label={wp.name}
+                                size={30}
                             />
                         ))}
+
                         {/* Marqueur d'arrivée */}
-                        <Marker
-                            coordinate={route[route.length - 1]}
-                            title="Arrivée"
-                            pinColor="red"
-                        />
+                        <MapPin id="arrivee" point={route[route.length - 1]} color="#C62828" label="Arrivée" />
                     </>
                 )}
             </MapView>
